@@ -104,7 +104,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Header
                 const Text(
-                  'Create Account 🌱',
+                  'Create Account',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -240,16 +240,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         onTap: () => setState(() => _selectedRole = 'donor'),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             color: _selectedRole == 'donor'
                                 ? AppColors.primary
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
+                                : AppColors.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: _selectedRole == 'donor'
                                   ? AppColors.primary
-                                  : AppColors.textHint,
+                                  : AppColors.outlineVariant,
                             ),
                           ),
                           child: Column(
@@ -259,12 +259,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 color: _selectedRole == 'donor'
                                     ? Colors.white
                                     : AppColors.textSecondary,
-                                size: 30,
+                                size: 22,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               Text(
                                 AppStrings.donor,
                                 style: TextStyle(
+                                  fontSize: 13,
                                   color: _selectedRole == 'donor'
                                       ? Colors.white
                                       : AppColors.textSecondary,
@@ -285,16 +286,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         onTap: () => setState(() => _selectedRole = 'ngo'),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             color: _selectedRole == 'ngo'
                                 ? AppColors.primary
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
+                                : AppColors.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: _selectedRole == 'ngo'
                                   ? AppColors.primary
-                                  : AppColors.textHint,
+                                  : AppColors.outlineVariant,
                             ),
                           ),
                           child: Column(
@@ -304,12 +305,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 color: _selectedRole == 'ngo'
                                     ? Colors.white
                                     : AppColors.textSecondary,
-                                size: 30,
+                                size: 22,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               Text(
                                 AppStrings.ngo,
                                 style: TextStyle(
+                                  fontSize: 13,
                                   color: _selectedRole == 'ngo'
                                       ? Colors.white
                                       : AppColors.textSecondary,

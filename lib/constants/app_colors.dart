@@ -1,37 +1,45 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary
-  static const Color primary = Color(0xFF2E7D32);       // Deep green
-  static const Color primaryLight = Color(0xFF60AD5E);  // Light green
-  static const Color primaryDark = Color(0xFF005005);   // Dark green
+  // Background & Surfaces (Corporate Charcoal Dark)
+  static const Color background = Color(0xFF121416);
+  static const Color surface = Color(0xFF121416);
+  static const Color surfaceContainerLow = Color(0xFF1A1C1E);
+  static const Color surfaceContainer = Color(0xFF1E2022);
+  static const Color surfaceContainerHigh = Color(0xFF282A2C);
+  static const Color surfaceContainerHighest = Color(0xFF333537);
+  static const Color cardColor = Color(0xFF1A1C1E);
 
-  // Secondary
-  static const Color secondary = Color(0xFFFFA726);     // Warm orange
-  static const Color secondaryLight = Color(0xFFFFD95B);
-  static const Color secondaryDark = Color(0xFFC77800);
+  // Primary (Burnt Orange)
+  static const Color primary = Color(0xFFFF6B35);
+  static const Color primaryContainer = Color(0xFFFF6B35);
+  static const Color onPrimary = Color(0xFF5D1900);
+  static const Color primaryTint = Color(0xFFFFB59D);
 
-  // Background & Surface
-  static const Color background = Color(0xFFF5F5F5);
-  static const Color surface = Colors.white;
-  static const Color cardColor = Color(0xFFFFFFFF);
+  // Secondary (Sage Teal)
+  static const Color secondary = Color(0xFF9DD0CD);
+  static const Color secondaryContainer = Color(0xFF1D514F);
+  static const Color onSecondaryContainer = Color(0xFF8FC2BF);
 
-  // Text
-  static const Color textPrimary = Color(0xFF212121);
-  static const Color textSecondary = Color(0xFF757575);
-  static const Color textHint = Color(0xFFBDBDBD);
+  // Tertiary (Amber)
+  static const Color tertiary = Color(0xFFFCBC0C);
+  static const Color tertiaryContainer = Color(0xFFC49100);
 
-  // Status Colors
-  static const Color success = Color(0xFF388E3C);
-  static const Color warning = Color(0xFFF57C00);
-  static const Color error = Color(0xFFD32F2F);
-  static const Color info = Color(0xFF1976D2);
+  // Text / Content
+  static const Color onSurface = Color(0xFFE2E2E5);
+  static const Color onSurfaceVariant = Color(0xFFE1BFB5);
+  static const Color textPrimary = Color(0xFFE2E2E5);
+  static const Color textSecondary = Color(0xFFA98A80);
+  static const Color textHint = Color(0xFF594139);
 
-  // Donation Status Colors
-  static const Color statusSubmitted = Color(0xFF1976D2);
-  static const Color statusAccepted = Color(0xFF7B1FA2);
-  static const Color statusAssigned = Color(0xFFF57C00);
-  static const Color statusPickedUp = Color(0xFF0288D1);
-  static const Color statusDelivered = Color(0xFF388E3C);
-  static const Color statusCompleted = Color(0xFF2E7D32);
+  // Status & Outline
+  static const Color outline = Color(0xFFA98A80);
+  static const Color outlineVariant = Color(0xFF594139);
+  static const Color error = Color(0xFFFFB4AB);
+
+  // Specific Logistics Badges
+  static const Color statusSubmitted = Color(0xFF9DD0CD); // Teal
+  static const Color statusAccepted = Color(0xFF1D514F);
+  static const Color statusPending = Color(0xFFFCBC0C);   // Amber
+  static const Color statusDelivered = Color(0xFFFF6B35); // Burnt Orange
 }

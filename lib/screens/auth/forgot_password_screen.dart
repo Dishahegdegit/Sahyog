@@ -100,7 +100,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
           // Title
           const Text(
-            'Reset Password 🔑',
+            'Reset Password',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
@@ -186,20 +186,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           width: 110,
           height: 110,
           decoration: BoxDecoration(
-            color: AppColors.success.withOpacity(0.1),
+            color: AppColors.secondary.withOpacity(0.15),
             borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: AppColors.secondary, width: 1.5),
           ),
           child: const Icon(
             Icons.mark_email_read_outlined,
             size: 60,
-            color: AppColors.success,
+            color: AppColors.secondary,
           ),
         ),
 
         const SizedBox(height: 32),
 
         const Text(
-          'Email Sent! ✅',
+          'Email Sent',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,

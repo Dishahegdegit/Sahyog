@@ -32,7 +32,7 @@ class AdminHome extends StatelessWidget {
                 size: 80, color: AppColors.primary),
             SizedBox(height: 16),
             Text(
-              'Welcome, Admin! 👑',
+              'Welcome, Admin!',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,

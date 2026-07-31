@@ -32,7 +32,7 @@ class DonorHome extends StatelessWidget {
                 size: 80, color: AppColors.primary),
             SizedBox(height: 16),
             Text(
-              'Welcome, Donor! 🎉',
+              'Welcome, Donor!',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,

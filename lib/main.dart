@@ -20,7 +20,7 @@ class SahyogApp extends StatelessWidget {
     return MaterialApp(
       title: 'Sahyog',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
+      theme: AppTheme.darkTheme,
       home: const SplashScreen(),
     );
   }

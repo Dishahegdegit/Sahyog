@@ -31,7 +31,7 @@ class NgoHome extends StatelessWidget {
             Icon(Icons.handshake, size: 80, color: AppColors.primary),
             SizedBox(height: 16),
             Text(
-              'Welcome, NGO! 🤝',
+              'Welcome, NGO!',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
