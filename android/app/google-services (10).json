@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "748923271748",
+    "project_id": "sahyog-f4716",
+    "storage_bucket": "sahyog-f4716.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:748923271748:android:c01995254bb4e5a855da11",
+        "android_client_info": {
+          "package_name": "com.example.sahyog"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwAUHlwUH_lYzNGGRi2DMjtvrNc2GaIfk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
