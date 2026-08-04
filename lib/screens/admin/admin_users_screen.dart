@@ -109,7 +109,6 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                         'all',
                         'donor',
                         'ngo',
-                        'volunteer',
                         'admin',
                       ].map((role) {
                         final isActive = _selectedRoleFilter == role;

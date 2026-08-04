@@ -37,15 +37,15 @@ class _AdminHomeState extends State<AdminHome> {
           side: const BorderSide(color: AppColors.surfaceContainerHighest),
         ),
         title: Text(
-          'Log Out',
+          'Confirm Logout',
           style: GoogleFonts.publicSans(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
           ),
         ),
         content: Text(
           'Are you sure you want to log out?',
-          style: GoogleFonts.inter(
+          style: GoogleFonts.publicSans(
             fontSize: 14,
             color: AppColors.textSecondary,
           ),
@@ -55,7 +55,7 @@ class _AdminHomeState extends State<AdminHome> {
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(
               'Cancel',
-              style: GoogleFonts.inter(
+              style: GoogleFonts.publicSans(
                 fontWeight: FontWeight.w600,
                 color: AppColors.textSecondary,
               ),
@@ -64,6 +64,8 @@ class _AdminHomeState extends State<AdminHome> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(72, 40),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -71,7 +73,7 @@ class _AdminHomeState extends State<AdminHome> {
             onPressed: () => Navigator.of(context).pop(true),
             child: Text(
               'Log Out',
-              style: GoogleFonts.inter(
+              style: GoogleFonts.publicSans(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
               ),

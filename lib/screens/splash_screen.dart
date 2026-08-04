@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'auth/login_screen.dart';
+import 'auth/onboarding_screen.dart';
+import '../constants/app_colors.dart';
 import 'donor/donor_home.dart';
 import 'ngo/ngo_home.dart';
 import 'admin/admin_home.dart';
@@ -47,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen>
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      _navigate(const LoginScreen());
+      _navigate(const OnboardingScreen());
       return;
     }
 
@@ -88,8 +89,18 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Dynamic theme-based colors
+    final backgroundColor = isDark ? AppColors.darkBackground : AppColors.background;
+    final emblemBgColor = isDark ? const Color(0xFF1E2022) : Colors.white;
+    final titleColor = isDark ? Colors.white : AppColors.textPrimary;
+    final subtitleColor = isDark ? const Color(0xFFC7A58E) : AppColors.textSecondary;
+    final loaderTrackColor = isDark ? const Color(0xFF282A2C) : AppColors.surfaceContainerLow;
+    final shadowColor = isDark ? const Color(0xFFFFB59D) : AppColors.primary;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0E1114),
+      backgroundColor: backgroundColor,
       body: Stack(
         children: [
           // Background Mandala & Glow Painter
@@ -100,6 +111,7 @@ class _SplashScreenState extends State<SplashScreen>
                 return CustomPaint(
                   painter: PremiumMandalaPainter(
                     pulse: _pulseAnimation.value,
+                    isDark: isDark,
                   ),
                 );
               },
@@ -121,25 +133,29 @@ class _SplashScreenState extends State<SplashScreen>
                       children: [
                         const Spacer(flex: 3),
 
-                        // Emblem Icon inside radial ring (Enlarged)
+                        // Emblem Icon inside radial ring
                         Container(
                           width: 72,
                           height: 72,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0xFF1E2022),
-                            border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.6), width: 2.0),
+                            color: emblemBgColor,
+                            border: Border.all(
+                              color: AppColors.primary.withOpacity(isDark ? 0.6 : 0.4),
+                              width: 2.0,
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFFF6B35).withOpacity(0.3),
+                                color: AppColors.primary.withOpacity(isDark ? 0.3 : 0.15),
                                 blurRadius: 24,
+                                offset: const Offset(0, 4),
                               ),
                             ],
                           ),
                           child: const Icon(
                             Icons.volunteer_activism,
                             size: 38,
-                            color: Color(0xFFFF6B35),
+                            color: AppColors.primary,
                           ),
                         ),
 
@@ -152,11 +168,11 @@ class _SplashScreenState extends State<SplashScreen>
                           style: GoogleFonts.publicSans(
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                            color: titleColor,
                             letterSpacing: 12,
                             shadows: [
                               Shadow(
-                                color: const Color(0xFFFFB59D).withOpacity(0.5),
+                                color: shadowColor.withOpacity(isDark ? 0.5 : 0.25),
                                 blurRadius: 20,
                               ),
                             ],
@@ -173,7 +189,7 @@ class _SplashScreenState extends State<SplashScreen>
                             gradient: LinearGradient(
                               colors: [
                                 Colors.transparent,
-                                const Color(0xFFFF6B35).withOpacity(0.8),
+                                AppColors.primary.withOpacity(isDark ? 0.8 : 0.5),
                                 Colors.transparent,
                               ],
                             ),
@@ -190,7 +206,7 @@ class _SplashScreenState extends State<SplashScreen>
                             fontSize: 12,
                             fontStyle: FontStyle.italic,
                             fontWeight: FontWeight.w500,
-                            color: const Color(0xFFC7A58E),
+                            color: subtitleColor,
                             letterSpacing: 2.5,
                             height: 1.8,
                           ),
@@ -206,9 +222,9 @@ class _SplashScreenState extends State<SplashScreen>
                               height: 2,
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(2),
-                                child: const LinearProgressIndicator(
-                                  backgroundColor: Color(0xFF282A2C),
-                                  color: Color(0xFFFF6B35),
+                                child: LinearProgressIndicator(
+                                  backgroundColor: loaderTrackColor,
+                                  color: AppColors.primary,
                                 ),
                               ),
                             ),
@@ -218,7 +234,7 @@ class _SplashScreenState extends State<SplashScreen>
                               style: GoogleFonts.inter(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: const Color(0xFFFF6B35).withOpacity(0.9),
+                                color: AppColors.primary.withOpacity(0.9),
                                 letterSpacing: 4.0,
                               ),
                             ),
@@ -242,8 +258,9 @@ class _SplashScreenState extends State<SplashScreen>
 /// Custom painter to generate the glowing gold radial ring and organic floral lotus petal pattern
 class PremiumMandalaPainter extends CustomPainter {
   final double pulse;
+  final bool isDark;
 
-  PremiumMandalaPainter({required this.pulse});
+  PremiumMandalaPainter({required this.pulse, required this.isDark});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -254,8 +271,12 @@ class PremiumMandalaPainter extends CustomPainter {
     final glowPaint = Paint()
       ..shader = RadialGradient(
           colors: [
-            const Color(0xFFC49100).withOpacity(0.24 * pulse),
-            const Color(0xFFFF6B35).withOpacity(0.14 * pulse),
+            isDark
+                ? const Color(0xFFC49100).withOpacity(0.24 * pulse)
+                : const Color(0xFFC49100).withOpacity(0.08 * pulse),
+            isDark
+                ? const Color(0xFFFF6B35).withOpacity(0.14 * pulse)
+                : const Color(0xFFFF6B35).withOpacity(0.05 * pulse),
             Colors.transparent,
           ],
           stops: const [0.15, 0.6, 1.0],
@@ -264,18 +285,28 @@ class PremiumMandalaPainter extends CustomPainter {
     canvas.drawCircle(center, minDim * 0.65 * pulse, glowPaint);
 
     // 2. Floral Petals Paints
+    final petalColor = isDark 
+        ? const Color(0xFFD4AF37).withOpacity(0.28) 
+        : const Color(0xFFFF6B35).withOpacity(0.12);
+    final outerPetalColor = isDark 
+        ? const Color(0xFFC49100).withOpacity(0.18) 
+        : const Color(0xFF2E6B68).withOpacity(0.08); // Sage teal details for contrast in light mode
+    final innerCircleColor = isDark 
+        ? const Color(0xFFD4AF37).withOpacity(0.20) 
+        : const Color(0xFFFF6B35).withOpacity(0.10);
+
     final petalPaint = Paint()
-      ..color = const Color(0xFFD4AF37).withOpacity(0.28)
+      ..color = petalColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
     final outerPetalPaint = Paint()
-      ..color = const Color(0xFFC49100).withOpacity(0.18)
+      ..color = outerPetalColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
 
     final innerCirclePaint = Paint()
-      ..color = const Color(0xFFD4AF37).withOpacity(0.20)
+      ..color = innerCircleColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
 
