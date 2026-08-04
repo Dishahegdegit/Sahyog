@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 class CloudinaryService {
@@ -9,7 +10,7 @@ class CloudinaryService {
   static const String _uploadUrl =
       'https://api.cloudinary.com/v1_1/$cloudName/image/upload';
 
-  /// Uploads a single image File to Cloudinary.
+  /// Uploads a single image File to Cloudinary (mobile/desktop).
   /// Returns the secure image URL string on success, or null on failure.
   Future<String?> uploadImage(File imageFile) async {
     try {
@@ -28,6 +29,35 @@ class CloudinaryService {
         return jsonData['secure_url'] as String?;
       } else {
         print('Cloudinary Upload Failed: ${jsonData['error']?['message']}');
+        return null;
+      }
+    } catch (e) {
+      print('Cloudinary Exception: $e');
+      return null;
+    }
+  }
+
+  /// Uploads image bytes to Cloudinary safely across Web and Mobile.
+  /// Returns the secure image URL string on success, or null on failure.
+  Future<String?> uploadImageBytes(
+    Uint8List bytes, {
+    String filename = 'image.jpg',
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse(_uploadUrl))
+        ..fields['upload_preset'] = uploadPreset
+        ..files.add(
+          http.MultipartFile.fromBytes('file', bytes, filename: filename),
+        );
+
+      final response = await request.send();
+
+      if (response.statusCode == 200) {
+        final responseData = await response.stream.bytesToString();
+        final jsonMap = json.decode(responseData);
+        return jsonMap['secure_url'] as String?;
+      } else {
+        print('Cloudinary Upload Failed: status ${response.statusCode}');
         return null;
       }
     } catch (e) {
