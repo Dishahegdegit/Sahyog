@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../constants/app_colors.dart';
 import 'auth/login_screen.dart';
 import 'donor/donor_home.dart';
 import 'ngo/ngo_home.dart';

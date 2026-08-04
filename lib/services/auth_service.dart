@@ -17,6 +17,7 @@ class AuthService {
     required String email,
     required String password,
     required String role,
+    String? name,
   }) async {
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
@@ -24,17 +25,36 @@ class AuthService {
         password: password,
       );
 
+      if (name != null && name.isNotEmpty) {
+        try {
+          await cred.user?.updateDisplayName(name);
+        } catch (_) {}
+      }
+
       final user = UserModel(
         uid: cred.user!.uid,
         email: email,
         role: role,
       );
 
+      final userMap = user.toMap();
+      if (name != null && name.isNotEmpty) {
+        userMap['name'] = name;
+      }
+
       // Save user to Firestore
       await _db
           .collection('users')
           .doc(cred.user!.uid)
-          .set(user.toMap());
+          .set(userMap);
+
+      if (role == 'ngo' && name != null && name.isNotEmpty) {
+        await _db.collection('ngos').doc(cred.user!.uid).set({
+          'id': cred.user!.uid,
+          'name': name,
+          'email': email,
+        }, SetOptions(merge: true));
+      }
 
       return user;
     } on FirebaseAuthException catch (e) {

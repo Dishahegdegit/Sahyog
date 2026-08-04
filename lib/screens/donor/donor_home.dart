@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart';
 import '../auth/login_screen.dart';
 
@@ -13,12 +14,71 @@ class DonorHome extends StatelessWidget {
         title: const Text('Donor Dashboard'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout, color: AppColors.error),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (dialogContext) {
+                  return AlertDialog(
+                    backgroundColor: AppColors.surfaceContainerLow,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    title: Text(
+                      'Confirm Logout',
+                      style: GoogleFonts.publicSans(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    content: Text(
+                      'Are you sure you want to log out?',
+                      style: GoogleFonts.publicSans(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.publicSans(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final nav = Navigator.of(context);
+                          Navigator.of(dialogContext).pop();
+                          await FirebaseAuth.instance.signOut();
+                          nav.pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                            (route) => false,
+                          );
+                        },
+                        child: Text(
+                          'Yes',
+                          style: GoogleFonts.publicSans(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),
