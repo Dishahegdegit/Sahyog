@@ -1,108 +1,83 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../constants/app_colors.dart';
-import '../auth/login_screen.dart';
+import 'donor_dashboard.dart';
+import 'create_donation_screen.dart';
+import 'donation_history_screen.dart';
+import 'donor_profile_screen.dart';
 
-class DonorHome extends StatelessWidget {
+class DonorHome extends StatefulWidget {
   const DonorHome({super.key});
 
   @override
+  State<DonorHome> createState() => _DonorHomeState();
+}
+
+class _DonorHomeState extends State<DonorHome> {
+  int _currentIndex = 0;
+
+  void _changeTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      DonorDashboard(onTabChange: _changeTab),
+      const CreateDonationScreen(),
+      const DonationHistoryScreen(),
+      const DonorProfileScreen(),
+    ];
+
+    if (_currentIndex >= pages.length) {
+      _currentIndex = 0;
+    }
+
+    const primaryOrange = Color(0xFFFF5E2B);
+    const darkNavBackground = Color(0xFF14171A);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Donor Dashboard'),
-        actions: [
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout, color: AppColors.error),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (dialogContext) {
-                  return AlertDialog(
-                    backgroundColor: AppColors.surfaceContainerLow,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    title: Text(
-                      'Confirm Logout',
-                      style: GoogleFonts.publicSans(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    content: Text(
-                      'Are you sure you want to log out?',
-                      style: GoogleFonts.publicSans(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop();
-                        },
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.publicSans(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.error,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        onPressed: () async {
-                          final nav = Navigator.of(context);
-                          Navigator.of(dialogContext).pop();
-                          await FirebaseAuth.instance.signOut();
-                          nav.pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                            (route) => false,
-                          );
-                        },
-                        child: Text(
-                          'Yes',
-                          style: GoogleFonts.publicSans(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-        ],
+      backgroundColor: const Color(0xFF121212),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
       ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.volunteer_activism,
-                size: 80, color: AppColors.primary),
-            SizedBox(height: 16),
-            Text(
-              'Welcome, Donor!',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: darkNavBackground,
+          border: Border(
+            top: BorderSide(color: Color(0xFF2A2F33), width: 1),
+          ),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: _changeTab,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: darkNavBackground,
+          selectedItemColor: primaryOrange,
+          unselectedItemColor: const Color(0xFF8C959E),
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          unselectedLabelStyle: const TextStyle(fontSize: 11),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.grid_view_outlined),
+              activeIcon: Icon(Icons.grid_view_rounded),
+              label: 'HOME',
             ),
-            SizedBox(height: 8),
-            Text(
-              'Your dashboard is coming soon...',
-              style: TextStyle(color: AppColors.textSecondary),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.add_circle_outline),
+              activeIcon: Icon(Icons.add_circle_rounded),
+              label: 'DONATE',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.history_outlined),
+              activeIcon: Icon(Icons.history_rounded),
+              label: 'HISTORY',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person_rounded),
+              label: 'PROFILE',
             ),
           ],
         ),

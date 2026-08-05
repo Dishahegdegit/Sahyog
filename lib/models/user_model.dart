@@ -1,7 +1,7 @@
 class UserModel {
   final String uid;
   final String email;
-  final String role; // 'donor' | 'ngo' | 'admin'
+  final String role;
 
   UserModel({
     required this.uid,
@@ -13,7 +13,7 @@ class UserModel {
     return UserModel(
       uid: map['uid'] ?? '',
       email: map['email'] ?? '',
-      role: map['role'] ?? 'donor',
+      role: map['role'] ?? '',
     );
   }
 
@@ -22,7 +22,6 @@ class UserModel {
       'uid': uid,
       'email': email,
       'role': role,
-      'createdAt': DateTime.now().toIso8601String(),
     };
   }
 }
