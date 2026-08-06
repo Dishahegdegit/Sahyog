@@ -201,8 +201,9 @@ class _AdminHomeState extends State<AdminHome> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.primary,
       elevation: 0,
+      foregroundColor: Colors.white,
       titleSpacing: 0,
       automaticallyImplyLeading: false,
       title: Padding(
@@ -213,7 +214,7 @@ class _AdminHomeState extends State<AdminHome> {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
@@ -228,7 +229,7 @@ class _AdminHomeState extends State<AdminHome> {
               style: GoogleFonts.publicSans(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: Colors.white,
                 letterSpacing: 0.2,
               ),
             ),
@@ -239,7 +240,7 @@ class _AdminHomeState extends State<AdminHome> {
         IconButton(
           icon: const Icon(
             Icons.notifications_outlined,
-            color: AppColors.textSecondary,
+            color: Colors.white,
             size: 22,
           ),
           onPressed: () {},
@@ -299,9 +300,10 @@ class _AdminHomeState extends State<AdminHome> {
             margin: const EdgeInsets.only(right: 16),
             width: 36,
             height: 36,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
               shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
             ),
             child: const Icon(Icons.person, color: Colors.white, size: 20),
           ),

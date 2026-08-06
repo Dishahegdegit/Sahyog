@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../constants/app_colors.dart';
 import 'donation_detail_screen.dart';
-import 'donation_history_screen.dart';
 
 class DonorDashboard extends StatefulWidget {
   final Function(int)? onTabChange;
@@ -14,30 +15,54 @@ class DonorDashboard extends StatefulWidget {
 }
 
 class _DonorDashboardState extends State<DonorDashboard> {
-  static const primaryOrange = Color(0xFFFF5E2B);
-  static const darkCardBg = Color(0xFF222629);
-  static const darkBorderColor = Color(0xFF2A2F33);
-  static const tealAccent = Color(0xFF00B8A9);
+  final PageController _carouselController = PageController();
+  int _currentCarouselIndex = 0;
+  Timer? _carouselTimer;
+  bool _isCarouselHovered = false;
+
+  final List<_CarouselSlideData> _carouselSlides = [
+    _CarouselSlideData(imagePath: 'assets/images/carousel_1.png'),
+    _CarouselSlideData(imagePath: 'assets/images/carousel_2.png'),
+    _CarouselSlideData(imagePath: 'assets/images/carousel_3.png'),
+    _CarouselSlideData(imagePath: 'assets/images/carousel_4.png'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _startCarouselAutoPlay();
+  }
+
+  void _startCarouselAutoPlay() {
+    _carouselTimer?.cancel();
+    _carouselTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (!mounted) return;
+      if (_isCarouselHovered) return;
+      if (_carouselController.hasClients) {
+        int currentIndex = _currentCarouselIndex;
+        int nextSlide = (currentIndex + 1) % _carouselSlides.length;
+        _carouselController.animateToPage(
+          nextSlide,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _carouselTimer?.cancel();
+    _carouselController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1A1D1F),
-          title: const Text('Sahyog'),
-        ),
-        body: const Center(
-          child: Text('Please log in to view dashboard.', style: TextStyle(color: Colors.white)),
-        ),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -47,29 +72,33 @@ class _DonorDashboardState extends State<DonorDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Universal Top App Bar (Logo + App Name | Bell + Profile Avatar)
-                  _buildUniversalTopBar(context, user),
+                  // Top Universal App Bar
+                  _buildTopAppBar(user),
                   const SizedBox(height: 24),
 
-                  // Main Body Header Section (Welcome greeting & Subtitle)
-                  _buildBodyHeader(user),
-                  const SizedBox(height: 24),
-
-                  // Hero Metric Card ("TOTAL MEALS SHARED") & 2-Column Grid
-                  _buildMetricsSection(user.uid),
+                  // Hero Welcome & Impact Tagline
+                  _buildPersonalizedHero(user),
                   const SizedBox(height: 20),
+
+                  // Image Carousel Banner (Styled matching reference NGO dashboard)
+                  _buildHeroCarousel(),
+                  const SizedBox(height: 24),
 
                   // Primary Orange CTA Card ("Donate Surplus Food")
                   _buildPrimaryCtaCard(context),
                   const SizedBox(height: 28),
 
-                  // Active Donations Section
-                  _buildActiveDonationsSection(context, user.uid),
+                  // Live KPI Metrics Dashboard (Firestore stream)
+                  _buildMetricsSection(user?.uid ?? ''),
                   const SizedBox(height: 28),
 
-                  // Recent History Section
-                  _buildRecentHistorySection(context, user.uid),
-                  const SizedBox(height: 24),
+                  // Active Dispatch / Donations Tracker
+                  _buildActiveDonationsSection(context, user?.uid ?? ''),
+                  const SizedBox(height: 28),
+
+                  // Recent History Teaser
+                  _buildRecentHistorySection(context, user?.uid ?? ''),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -79,13 +108,11 @@ class _DonorDashboardState extends State<DonorDashboard> {
     );
   }
 
-  /// Top Row: Logo + App Name ("Sahyog") on left; Notification Bell + Profile Avatar on right
-  Widget _buildUniversalTopBar(BuildContext context, User user) {
+  Widget _buildTopAppBar(User? user) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('donors')
-          .doc(user.uid)
-          .snapshots(),
+      stream: user != null
+          ? FirebaseFirestore.instance.collection('donors').doc(user.uid).snapshots()
+          : null,
       builder: (context, snapshot) {
         String profileUrl = '';
         if (snapshot.hasData && snapshot.data!.exists) {
@@ -93,73 +120,61 @@ class _DonorDashboardState extends State<DonorDashboard> {
         }
 
         return Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Left: Logo + App Title
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.volunteer_activism, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Sahyog',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ],
+              ),
               Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: primaryOrange.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: primaryOrange.withValues(alpha: 0.4)),
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.volunteer_activism,
-                      color: primaryOrange,
-                      size: 22,
+                    child: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Sahyog',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-
-              // Right: Notification Bell + Profile Avatar
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No new notifications')),
-                      );
-                    },
-                    icon: const Icon(Icons.notifications_none, color: Colors.white, size: 24),
-                    tooltip: 'Notifications',
-                  ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () {
-                      if (widget.onTabChange != null) {
-                        widget.onTabChange!(3); // Switch to Profile tab
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: primaryOrange.withValues(alpha: 0.6), width: 1.5),
-                      ),
-                      child: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: primaryOrange.withValues(alpha: 0.3),
-                        backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
-                        child: profileUrl.isEmpty
-                            ? const Icon(Icons.person, color: Colors.white, size: 18)
-                            : null,
-                      ),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.white.withValues(alpha: 0.25),
+                      backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
+                      child: profileUrl.isEmpty
+                          ? const Icon(Icons.person, color: Colors.white, size: 20)
+                          : null,
                     ),
                   ),
                 ],
@@ -171,25 +186,19 @@ class _DonorDashboardState extends State<DonorDashboard> {
     );
   }
 
-  /// Page Body Header (Welcome title + Subtitle below the app bar)
-  Widget _buildBodyHeader(User user) {
+  Widget _buildPersonalizedHero(User? user) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('donors')
-          .doc(user.uid)
-          .snapshots(),
+      stream: user != null
+          ? FirebaseFirestore.instance.collection('donors').doc(user.uid).snapshots()
+          : null,
       builder: (context, snapshot) {
-        String donorName = user.displayName ?? '';
+        String donorName = 'Donor';
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data();
-          if (data != null && data['fullName'] != null && data['fullName'].toString().isNotEmpty) {
-            donorName = data['fullName'];
-          }
+          donorName = data?['fullName'] ?? data?['name'] ?? 'Donor';
+        } else if (user?.displayName != null && user!.displayName!.isNotEmpty) {
+          donorName = user.displayName!;
         }
-        if (donorName.isEmpty && user.email != null) {
-          donorName = user.email!.split('@').first;
-        }
-        if (donorName.isEmpty) donorName = 'Donor';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -197,17 +206,18 @@ class _DonorDashboardState extends State<DonorDashboard> {
             Text(
               'Welcome back, $donorName',
               style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 6),
             const Text(
-              'Your contributions directly reduce food waste and support local communities.',
+              'Connecting food to those in need • Collaboration for community impact',
               style: TextStyle(
                 fontSize: 14,
-                color: Color(0xFF9EA5AD),
+                color: AppColors.textSecondary,
                 height: 1.4,
               ),
             ),
@@ -217,9 +227,165 @@ class _DonorDashboardState extends State<DonorDashboard> {
     );
   }
 
-  /// Hero Card ("TOTAL MEALS SHARED") & 2-Column Stats from Real Firestore
+  Widget _buildHeroCarousel() {
+    return Column(
+      children: [
+        SizedBox(
+          height: 220,
+          child: PageView.builder(
+            controller: _carouselController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentCarouselIndex = index;
+              });
+            },
+            itemCount: _carouselSlides.length,
+            itemBuilder: (context, index) {
+              final slide = _carouselSlides[index];
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color.fromRGBO(0, 0, 0, 0.12),
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    slide.imagePath,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    alignment: Alignment.center,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.primary, AppColors.primaryAccent],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.volunteer_activism, size: 54, color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Indicator Dots
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(_carouselSlides.length, (index) {
+            final isActive = _currentCarouselIndex == index;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              height: 8,
+              width: isActive ? 24 : 8,
+              decoration: BoxDecoration(
+                color: isActive ? AppColors.primary : AppColors.borderLight,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrimaryCtaCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.primary,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            if (widget.onTabChange != null) {
+              widget.onTabChange!(1); // Switch to Donate tab
+            }
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(22.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add_circle_outline, color: AppColors.primary, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Donate Surplus Food',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'TAP TO START A NEW FOOD DONATION',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMetricsSection(String uid) {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('donations')
           .where('donorId', isEqualTo: uid)
@@ -232,20 +398,24 @@ class _DonorDashboardState extends State<DonorDashboard> {
         if (snapshot.hasData) {
           final Set<String> ngoSet = {};
           for (var doc in snapshot.data!.docs) {
-            final data = doc.data() as Map<String, dynamic>?;
-            if (data != null) {
-              final servings = data['servings'] is int
-                  ? data['servings'] as int
-                  : int.tryParse(data['servings']?.toString() ?? '0') ?? 0;
-              final status = data['status']?.toString().toLowerCase() ?? '';
-              if (status == 'completed' || status == 'delivered') {
-                totalMeals += servings;
-                peopleServed += servings;
-              }
-              final ngoName = data['ngoName'] as String?;
-              if (ngoName != null && ngoName.isNotEmpty && ngoName != 'Not Assigned' && ngoName != 'Unassigned') {
-                ngoSet.add(ngoName);
-              }
+            final data = doc.data();
+            final servingsVal = data['servings'];
+            final servings = servingsVal is int
+                ? servingsVal
+                : int.tryParse(servingsVal?.toString() ?? '0') ?? 0;
+
+            final status = (data['status'] ?? '').toString().toLowerCase();
+            if (status == 'completed' || status == 'delivered') {
+              totalMeals += servings;
+              peopleServed += servings;
+            }
+
+            final ngoName = data['ngoName'] as String?;
+            if (ngoName != null &&
+                ngoName.isNotEmpty &&
+                ngoName != 'Not Assigned' &&
+                ngoName != 'Unassigned') {
+              ngoSet.add(ngoName);
             }
           }
           ngosHelped = ngoSet.length;
@@ -253,83 +423,89 @@ class _DonorDashboardState extends State<DonorDashboard> {
 
         return Column(
           children: [
-            // Top Hero Card: TOTAL MEALS SHARED
+            // Top KPI Card: TOTAL MEALS SHARED
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: darkCardBg,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: darkBorderColor),
-                boxShadow: [
+                border: Border.all(color: AppColors.borderLight),
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    color: Color.fromRGBO(0, 0, 0, 0.04),
+                    blurRadius: 16,
+                    offset: Offset(0, 4),
                   ),
                 ],
               ),
-              child: Stack(
+              child: Row(
                 children: [
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 4,
-                      decoration: BoxDecoration(
-                        color: primaryOrange,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
+                  Container(
+                    width: 4,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12.0),
+                  const SizedBox(width: 16),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'TOTAL MEALS SHARED',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF8C959E),
+                            color: AppColors.textSecondary,
                             letterSpacing: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 6),
                         Text(
-                          totalMeals.toString(),
+                          '$totalMeals',
                           style: const TextStyle(
-                            fontSize: 36,
+                            fontSize: 32,
                             fontWeight: FontWeight.w800,
-                            color: primaryOrange,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ],
                     ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryTint,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.restaurant_rounded, color: AppColors.primary, size: 28),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // 2-Column Stats Row: NGOS HELPED & PEOPLE SERVED
+            // 2-Column Metrics Cards
             Row(
               children: [
                 Expanded(
-                  child: _buildSubStatCard(
-                    'NGOS HELPED',
-                    ngosHelped.toString(),
-                    Icons.business_outlined,
+                  child: _buildKpiCard(
+                    title: 'NGOS HELPED',
+                    value: '$ngosHelped',
+                    icon: Icons.domain_rounded,
+                    accentColor: AppColors.statusTransit,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildSubStatCard(
-                    'PEOPLE SERVED',
-                    peopleServed.toString(),
-                    Icons.people_outline,
+                  child: _buildKpiCard(
+                    title: 'PEOPLE SERVED',
+                    value: '$peopleServed',
+                    icon: Icons.people_alt_rounded,
+                    accentColor: AppColors.secondary,
                   ),
                 ),
               ],
@@ -340,35 +516,51 @@ class _DonorDashboardState extends State<DonorDashboard> {
     );
   }
 
-  Widget _buildSubStatCard(String title, String value, IconData icon) {
+  Widget _buildKpiCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color accentColor,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: darkCardBg,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: darkBorderColor),
+        border: Border.all(color: AppColors.borderLight),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.03),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: primaryOrange, size: 22),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF8C959E),
-              letterSpacing: 1.1,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              Icon(icon, size: 20, color: accentColor),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: primaryOrange,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: accentColor,
             ),
           ),
         ],
@@ -376,73 +568,6 @@ class _DonorDashboardState extends State<DonorDashboard> {
     );
   }
 
-  /// Primary Orange CTA Card ("Donate Surplus Food") with Hover Effects
-  Widget _buildPrimaryCtaCard(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          if (widget.onTabChange != null) {
-            widget.onTabChange!(1); // Switch to Donate tab
-          }
-        },
-        hoverColor: Colors.orangeAccent.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: primaryOrange,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: primaryOrange.withValues(alpha: 0.4),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Donate Surplus Food',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'TAP TO START A NEW FOOD DONATION',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white70,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right,
-                size: 32,
-                color: Colors.white,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Active Donations Section with Live Tracking Indicator
   Widget _buildActiveDonationsSection(BuildContext context, String uid) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
@@ -451,7 +576,7 @@ class _DonorDashboardState extends State<DonorDashboard> {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: primaryOrange));
+          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
         }
 
         final allDocs = snapshot.data?.docs ?? [];
@@ -464,7 +589,6 @@ class _DonorDashboardState extends State<DonorDashboard> {
               ? servingsVal
               : int.tryParse(servingsVal?.toString() ?? '0') ?? 0;
 
-          // Filter out legacy test entries like '15box'
           if (foodQuantity == '15box') return false;
 
           final isValidDonation = intServings > 0 || foodQuantity.isNotEmpty;
@@ -482,23 +606,23 @@ class _DonorDashboardState extends State<DonorDashboard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Active Donations',
+                  'Active Dispatch Tracker',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 TextButton(
                   onPressed: () {
                     if (widget.onTabChange != null) {
-                      widget.onTabChange!(2); // Switch to History tab
+                      widget.onTabChange!(2); // History tab
                     }
                   },
                   child: const Text(
                     'Live Track',
                     style: TextStyle(
-                      color: primaryOrange,
+                      color: AppColors.primary,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),
@@ -512,22 +636,22 @@ class _DonorDashboardState extends State<DonorDashboard> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: darkCardBg,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: darkBorderColor),
+                  border: Border.all(color: AppColors.borderLight),
                 ),
                 child: Column(
                   children: [
-                    Icon(Icons.inventory_2_outlined, size: 40, color: primaryOrange.withValues(alpha: 0.6)),
+                    Icon(Icons.inventory_2_outlined, size: 42, color: AppColors.primary.withValues(alpha: 0.6)),
                     const SizedBox(height: 12),
                     const Text(
                       'No active donations right now',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                      style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                     ),
                     const SizedBox(height: 4),
                     const Text(
                       'Share your surplus food to start tracking live progress!',
-                      style: TextStyle(color: Color(0xFF8C959E), fontSize: 12),
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
                   ],
                 ),
@@ -545,15 +669,18 @@ class _DonorDashboardState extends State<DonorDashboard> {
 
                   double progressValue = 0.25;
                   String statusSubtext = 'Awaiting NGO acceptance';
+                  Color statusColor = AppColors.statusPending;
 
                   final lowerStatus = status.toLowerCase();
                   if (lowerStatus.contains('accepted')) {
                     progressValue = 0.50;
+                    statusColor = AppColors.statusAccepted;
                     statusSubtext = ngoName != null && ngoName.isNotEmpty
                         ? 'Accepted by "$ngoName"'
-                        : 'Accepted by NGO';
+                        : 'Accepted by NGO Partner';
                   } else if (lowerStatus.contains('assigned') || lowerStatus.contains('transit') || lowerStatus.contains('picked')) {
                     progressValue = 0.75;
+                    statusColor = AppColors.statusTransit;
                     statusSubtext = volunteerName != null && volunteerName.isNotEmpty
                         ? '$volunteerName is in transit'
                         : 'Volunteer assigned for pickup';
@@ -563,9 +690,16 @@ class _DonorDashboardState extends State<DonorDashboard> {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: darkCardBg,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: darkBorderColor),
+                      border: Border.all(color: AppColors.borderLight),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color.fromRGBO(0, 0, 0, 0.03),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -578,10 +712,10 @@ class _DonorDashboardState extends State<DonorDashboard> {
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: primaryOrange.withValues(alpha: 0.15),
+                                    color: AppColors.primaryTint,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: const Icon(Icons.restaurant, color: primaryOrange, size: 20),
+                                  child: const Icon(Icons.restaurant, color: AppColors.primary, size: 20),
                                 ),
                                 const SizedBox(width: 12),
                                 Column(
@@ -592,12 +726,12 @@ class _DonorDashboardState extends State<DonorDashboard> {
                                       style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                        color: AppColors.textPrimary,
                                       ),
                                     ),
                                     Text(
                                       'ID: $shortId${foodQuantity.isNotEmpty ? ' • $foodQuantity' : ''}',
-                                      style: const TextStyle(fontSize: 12, color: Color(0xFF8C959E)),
+                                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                                     ),
                                   ],
                                 ),
@@ -608,38 +742,38 @@ class _DonorDashboardState extends State<DonorDashboard> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: tealAccent.withValues(alpha: 0.2),
+                                    color: statusColor.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: tealAccent),
+                                    border: Border.all(color: statusColor),
                                   ),
                                   child: Text(
                                     status.toUpperCase(),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
-                                      color: tealAccent,
+                                      color: statusColor,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 4),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                  icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
                                   tooltip: 'Delete Request',
                                   onPressed: () async {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (dialogCtx) => AlertDialog(
-                                        backgroundColor: darkCardBg,
-                                        title: const Text('Delete Donation Request', style: TextStyle(color: Colors.white)),
-                                        content: const Text('Are you sure you want to remove this donation request?', style: TextStyle(color: Colors.white70)),
+                                        backgroundColor: Colors.white,
+                                        title: const Text('Delete Donation Request', style: TextStyle(color: AppColors.textPrimary)),
+                                        content: const Text('Are you sure you want to remove this donation request?', style: TextStyle(color: AppColors.textSecondary)),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(dialogCtx, false),
-                                            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                                            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
                                           ),
                                           TextButton(
                                             onPressed: () => Navigator.pop(dialogCtx, true),
-                                            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                                            style: TextButton.styleFrom(foregroundColor: AppColors.error),
                                             child: const Text('Delete'),
                                           ),
                                         ],
@@ -661,27 +795,27 @@ class _DonorDashboardState extends State<DonorDashboard> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Real Dynamic Status Progress Bar
+                        // Progress Step Bar
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
                             value: progressValue,
-                            backgroundColor: const Color(0xFF1E2225),
-                            valueColor: const AlwaysStoppedAnimation<Color>(tealAccent),
+                            backgroundColor: AppColors.surfaceContainerLow,
+                            valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                             minHeight: 6,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
-                            const Icon(Icons.directions_bike, size: 14, color: Color(0xFF8C959E)),
+                            Icon(Icons.directions_bike_outlined, size: 14, color: statusColor),
                             const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                statusSubtext,
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF8C959E)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            Text(
+                              statusSubtext,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: statusColor,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -697,7 +831,6 @@ class _DonorDashboardState extends State<DonorDashboard> {
     );
   }
 
-  /// Recent History Section from Real Firestore
   Widget _buildRecentHistorySection(BuildContext context, String uid) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
@@ -717,28 +850,59 @@ class _DonorDashboardState extends State<DonorDashboard> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Recent History',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Recent History',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (historyDocs.isNotEmpty)
+                  TextButton(
+                    onPressed: () {
+                      if (widget.onTabChange != null) {
+                        widget.onTabChange!(2); // History tab
+                      }
+                    },
+                    child: const Text(
+                      'View All',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             if (historyDocs.isEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: darkCardBg,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: darkBorderColor),
+                  border: Border.all(color: AppColors.borderLight),
                 ),
-                child: const Text(
-                  'No past donation history available yet.',
-                  style: TextStyle(color: Color(0xFF8C959E), fontSize: 13),
-                  textAlign: TextAlign.center,
+                child: Column(
+                  children: [
+                    Icon(Icons.history_rounded, size: 42, color: AppColors.textSecondary.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'No donation history yet',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Accepted NGO requests and completed donations will appear here.',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    ),
+                  ],
                 ),
               )
             else
@@ -746,78 +910,75 @@ class _DonorDashboardState extends State<DonorDashboard> {
                 children: historyDocs.take(3).map((doc) {
                   final data = doc.data();
                   final foodType = data['foodType'] as String? ?? 'Veg';
-                  final servings = data['servings']?.toString() ?? '0';
+                  final foodQuantity = data['foodQuantity'] as String? ?? '';
+                  final status = data['status'] as String? ?? 'Completed';
+                  final ngoName = data['ngoName'] as String? ?? 'NGO Partner';
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
-                      color: darkCardBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: darkBorderColor),
+                      border: Border.all(color: AppColors.borderLight),
                     ),
-                    child: ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: primaryOrange.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.restaurant, color: primaryOrange, size: 18),
-                      ),
-                      title: Text(
-                        foodType,
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                      subtitle: const Text('COMPLETED', style: TextStyle(fontSize: 11, color: Color(0xFF8C959E))),
-                      trailing: Text(
-                        '+$servings Meals',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: primaryOrange,
-                          fontSize: 14,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => DonationDetailScreen(donationId: doc.id),
+                    child: Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      child: ListTile(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => DonationDetailScreen(donationId: doc.id),
+                            ),
+                          );
+                        },
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryTint,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        );
-                      },
+                          child: const Icon(Icons.restaurant, color: AppColors.primary, size: 20),
+                        ),
+                        title: Text(
+                          foodType,
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        ),
+                        subtitle: Text(
+                          'Assigned to: $ngoName • $foodQuantity',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.statusDelivered.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            status.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.statusDelivered,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   );
                 }).toList(),
               ),
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton(
-                onPressed: () {
-                  if (widget.onTabChange != null) {
-                    widget.onTabChange!(2); // Navigate to History
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const DonationHistoryScreen(),
-                      ),
-                    );
-                  }
-                },
-                child: const Text(
-                  'VIEW FULL HISTORY',
-                  style: TextStyle(
-                    color: primaryOrange,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.1,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ),
           ],
         );
       },
     );
   }
+}
+
+class _CarouselSlideData {
+  final String imagePath;
+
+  _CarouselSlideData({
+    required this.imagePath,
+  });
 }

@@ -25,20 +25,21 @@ class _NgoHomeState extends State<NgoHome> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.primary,
         elevation: 0,
+        foregroundColor: Colors.white,
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.primary.withOpacity(0.2),
+                color: Colors.white.withOpacity(0.2),
               ),
               child: const Icon(
                 Icons.volunteer_activism,
                 size: 20,
-                color: AppColors.primary,
+                color: Colors.white,
               ),
             ),
             const SizedBox(width: 10),
@@ -47,7 +48,7 @@ class _NgoHomeState extends State<NgoHome> {
               style: GoogleFonts.publicSans(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: Colors.white,
               ),
             ),
           ],
@@ -59,11 +60,11 @@ class _NgoHomeState extends State<NgoHome> {
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.primary, width: 1.5),
+                border: Border.all(color: Colors.white, width: 1.5),
               ),
               child: const Icon(
                 Icons.person_outline,
-                color: AppColors.primary,
+                color: Colors.white,
                 size: 20,
               ),
             ),
