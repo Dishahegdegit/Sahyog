@@ -38,14 +38,23 @@ class NgoApprovalItem {
         ? rawRegId.toString()
         : 'NGO-REG-${DateTime.now().year}-${docId.substring(0, math.min(3, docId.length)).toUpperCase()}';
 
+    final rawStatus = map['status'];
+    final bool? verified = map['verified'] is bool ? map['verified'] : null;
+    String statusStr = 'pending';
+    if (rawStatus != null) {
+      statusStr = rawStatus.toString();
+    } else if (verified != null) {
+      statusStr = verified ? 'approved' : 'pending';
+    }
+
     return NgoApprovalItem(
       id: docId,
-      name: map['name'] ?? map['email'] ?? 'Unknown NGO',
+      name: map['name'] ?? map['email'] ?? 'Unknown',
       email: map['email'] ?? '',
       registrationId: computedRegId,
       address: map['address'] ?? map['location'] ?? 'Location not provided',
       phone: map['phone'] ?? '',
-      status: map['status'] ?? 'pending',
+      status: statusStr,
       createdAt: created,
     );
   }

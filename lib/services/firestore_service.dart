@@ -66,7 +66,7 @@ class FirestoreService {
     // Notify Donor in notifications collection
     if (donorId.toString().isNotEmpty) {
       await _db.collection('notifications').add({
-        'userId': donorId,
+        'recipientId': donorId,
         'donationId': donationId,
         'title': 'Donation Request Accepted',
         'body': '$ngoName has accepted your food donation request.',
@@ -124,7 +124,7 @@ class FirestoreService {
     // 3. Notify Donor
     if (donorId.isNotEmpty) {
       await _db.collection('notifications').add({
-        'userId': donorId,
+        'recipientId': donorId,
         'donationId': donationId,
         'title': 'Volunteer Assigned',
         'body': '$volunteerName ($volunteerPhone) has been assigned to pick up your donation.',

@@ -41,6 +41,12 @@ class AuthService {
       if (name != null && name.isNotEmpty) {
         userMap['name'] = name;
       }
+      if (role == 'ngo') {
+        userMap['status'] = 'pending';
+      }
+      if (role == 'donor') {
+        userMap['verified'] = false;
+      }
 
       // Save user to Firestore
       await _db
@@ -80,7 +86,19 @@ class AuthService {
 
       if (!doc.exists) throw 'User data not found';
 
-      return UserModel.fromMap(doc.data()!);
+      final data = doc.data()!;
+
+      // ── Ban check ──────────────────────────────────────────────
+      if (data['banned'] == true) {
+        await _auth.signOut(); // Force sign-out immediately
+        throw 'Your account has been suspended. Please contact support.';
+      }
+
+      await _db.collection('users').doc(cred.user!.uid).update({
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      });
+
+      return UserModel.fromMap(data);
     } on FirebaseAuthException catch (e) {
       throw _handleError(e);
     }

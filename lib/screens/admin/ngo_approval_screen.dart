@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart';
+import '../../theme/app_theme.dart';
 import '../../models/admin/ngo_approval_item.dart';
 
 // ─────────────────────────────────────────────
@@ -88,37 +89,54 @@ class NgoApprovalScreen extends StatefulWidget {
 class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
   String _searchQuery = '';
   String _selectedTab = 'pending';
+  String _selectedRole = 'ngo'; // 'ngo' or 'donor'
 
-  Future<void> _approveNGO(String uid) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .update({'status': 'approved'});
+  Future<void> _approveUser(String uid, String role) async {
+    final db = FirebaseFirestore.instance;
+    final updateData = role == 'ngo' ? {'status': 'approved'} : {'verified': true};
+    await db.collection('users').doc(uid).update(updateData);
+    
+    // Send Notification
+    await db.collection('notifications').add({
+      'title': '${role.toUpperCase()} Approved',
+      'body': 'Your account has been verified by the administrator.',
+      'recipientId': uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'category': 'system',
+    });
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      _snackBar('NGO approved successfully', AppColors.secondary),
+      _snackBar('${role.toUpperCase()} approved successfully', AppColors.secondary),
     );
   }
 
-  Future<void> _rejectNGO(String uid) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .update({'status': 'rejected'});
+  Future<void> _rejectUser(String uid, String role) async {
+    final db = FirebaseFirestore.instance;
+    final updateData = role == 'ngo' ? {'status': 'rejected'} : {'verified': false};
+    await db.collection('users').doc(uid).update(updateData);
+
+    // Send Notification
+    await db.collection('notifications').add({
+      'title': '${role.toUpperCase()} Rejected',
+      'body': 'Your verification request was rejected. Please contact support for details.',
+      'recipientId': uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'category': 'system',
+    });
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      _snackBar('Application rejected', AppColors.error),
+      _snackBar('${role.toUpperCase()} rejected', AppColors.error),
     );
   }
 
-  Future<void> _markPendingNGO(String uid) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .update({'status': 'pending'});
+  Future<void> _markPendingUser(String uid, String role) async {
+    final updateData = role == 'ngo' ? {'status': 'pending'} : {'verified': false};
+    await FirebaseFirestore.instance.collection('users').doc(uid).update(updateData);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      _snackBar('NGO marked as pending', AppColors.tertiary),
+      _snackBar('${role.toUpperCase()} marked as pending', AppColors.tertiary),
     );
   }
 
@@ -126,8 +144,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
         content: Text(msg, style: GoogleFonts.inter(fontSize: 13)),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       );
 
   @override
@@ -135,23 +152,37 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
-          .where('role', isEqualTo: 'ngo')
+          .where('role', isEqualTo: _selectedRole)
           .snapshots(),
       builder: (context, snapshot) {
-        final allNGOs = snapshot.data?.docs ?? [];
+        final allItems = snapshot.data?.docs ?? [];
 
-        final pending = allNGOs
-            .where((d) =>
-                ((d.data() as Map)['status'] ?? 'pending') == 'pending')
-            .toList();
+        final pending = allItems.where((d) {
+          final data = d.data() as Map;
+          if (_selectedRole == 'ngo') {
+            return (data['status'] ?? 'pending') == 'pending';
+          } else {
+            return (data['verified'] ?? false) == false;
+          }
+        }).toList();
 
-        final approved = allNGOs
-            .where((d) => (d.data() as Map)['status'] == 'approved')
-            .toList();
+        final approved = allItems.where((d) {
+          final data = d.data() as Map;
+          if (_selectedRole == 'ngo') {
+            return data['status'] == 'approved';
+          } else {
+            return data['verified'] == true;
+          }
+        }).toList();
 
-        final rejected = allNGOs
-            .where((d) => (d.data() as Map)['status'] == 'rejected')
-            .toList();
+        final rejected = allItems.where((d) {
+          final data = d.data() as Map;
+          if (_selectedRole == 'ngo') {
+            return data['status'] == 'rejected';
+          } else {
+            return false; // Donors don't really have "rejected" status yet, just unverified
+          }
+        }).toList();
 
         final List<DocumentSnapshot> currentTabList;
         if (_selectedTab == 'approved') {
@@ -162,18 +193,17 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
           currentTabList = pending;
         }
 
-        final filteredNGOs = currentTabList.where((d) {
+        final filteredItems = currentTabList.where((d) {
           final data = d.data() as Map<String, dynamic>;
           final name = (data['name'] ?? '').toString().toLowerCase();
           final email = (data['email'] ?? '').toString().toLowerCase();
-          return name.contains(_searchQuery.toLowerCase()) ||
-              email.contains(_searchQuery.toLowerCase());
+          return name.contains(_searchQuery.toLowerCase()) || email.contains(_searchQuery.toLowerCase());
         }).toList();
 
-        // Weekly trend from real timestamps
+        // Weekly trend
         List<double> weeklyBuckets = List.filled(7, 0.0);
         final now = DateTime.now();
-        for (final doc in allNGOs) {
+        for (final doc in allItems) {
           final data = doc.data() as Map<String, dynamic>;
           DateTime? created;
           if (data['createdAt'] != null) {
@@ -191,15 +221,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
           }
         }
 
-        String titleText;
-        if (_selectedTab == 'approved') {
-          titleText = 'Approved NGOs';
-        } else if (_selectedTab == 'rejected') {
-          titleText = 'Rejected NGOs';
-        } else {
-          titleText = 'Pending Approvals';
-        }
-
+        final colors = context.colors;
         return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
@@ -208,8 +230,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
               // ── Header ──
               Row(
                 children: [
-                  const Icon(Icons.shield_outlined,
-                      color: AppColors.primary, size: 14),
+                  const Icon(Icons.verified_user_outlined, color: AppColors.primary, size: 14),
                   const SizedBox(width: 6),
                   Text(
                     'VERIFICATION PORTAL',
@@ -223,37 +244,29 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      titleText,
-                      style: GoogleFonts.publicSans(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  if (_selectedTab == 'pending' && pending.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${pending.length} NEW',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                ],
+              Text(
+                'Approval Center',
+                style: GoogleFonts.publicSans(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: colors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Role Selector (NGO / Donor) ──
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    _buildRoleTab('NGOs', 'ngo', colors),
+                    _buildRoleTab('Donors', 'donor', colors),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
 
@@ -265,8 +278,10 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
                     _buildTabChip('Pending', pending.length, 'pending', AppColors.primary),
                     const SizedBox(width: 8),
                     _buildTabChip('Approved', approved.length, 'approved', AppColors.secondary),
-                    const SizedBox(width: 8),
-                    _buildTabChip('Rejected', rejected.length, 'rejected', AppColors.error),
+                    if (_selectedRole == 'ngo') ...[
+                      const SizedBox(width: 8),
+                      _buildTabChip('Rejected', rejected.length, 'rejected', AppColors.error),
+                    ],
                   ],
                 ),
               ),
@@ -276,61 +291,48 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
               Container(
                 height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceContainerLow,
+                  color: colors.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: AppColors.surfaceContainerHighest),
+                  border: Border.all(color: colors.outlineVariant),
                 ),
                 child: TextField(
-                  onChanged: (v) =>
-                      setState(() => _searchQuery = v),
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: AppColors.textPrimary,
-                  ),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  style: GoogleFonts.inter(fontSize: 13, color: colors.textPrimary),
                   decoration: InputDecoration(
-                    hintText:
-                        'Search by name or email...',
-                    hintStyle: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                    prefixIcon: const Icon(Icons.search,
-                        color: AppColors.textSecondary, size: 18),
+                    hintText: 'Search by name or email...',
+                    hintStyle: GoogleFonts.inter(fontSize: 13, color: colors.textHint),
+                    prefixIcon: Icon(Icons.search, color: colors.textSecondary, size: 18),
                     border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // ── NGO Cards ──
+              // ── Items List ──
               if (snapshot.connectionState == ConnectionState.waiting)
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 40),
-                    child: CircularProgressIndicator(
-                        color: AppColors.primary),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   ),
                 )
-              else if (allNGOs.isEmpty)
+              else if (allItems.isEmpty)
                 _EmptyStateForTab(_selectedTab)
               else ...[
-                if (filteredNGOs.isNotEmpty) ...[
+                if (filteredItems.isNotEmpty) ...[
                   Column(
-                    children: filteredNGOs.map((doc) {
-                      final data =
-                          doc.data() as Map<String, dynamic>;
-                      final item =
-                          NgoApprovalItem.fromMap(data, doc.id);
+                    children: filteredItems.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final item = NgoApprovalItem.fromMap(data, doc.id);
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _NgoCard(
                           item: item,
-                          onApprove: () => _approveNGO(doc.id),
-                          onReject: () => _rejectNGO(doc.id),
-                          onMarkPending: () => _markPendingNGO(doc.id),
+                          role: _selectedRole,
+                          onApprove: () => _approveUser(doc.id, _selectedRole),
+                          onReject: () => _rejectUser(doc.id, _selectedRole),
+                          onMarkPending: () => _markPendingUser(doc.id, _selectedRole),
                         ),
                       );
                     }).toList(),
@@ -338,13 +340,10 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
                 ] else if (_searchQuery.isNotEmpty) ...[
                   Center(
                     child: Padding(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 40),
+                      padding: const EdgeInsets.symmetric(vertical: 40),
                       child: Text(
                         'No results for "$_searchQuery"',
-                        style: GoogleFonts.inter(
-                            color: AppColors.textSecondary,
-                            fontSize: 14),
+                        style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 14),
                       ),
                     ),
                   ),
@@ -357,7 +356,8 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
                 // ── Weekly Trend ──
                 _WeeklyTrendSection(
                   trendValues: weeklyBuckets,
-                  totalCount: allNGOs.length,
+                  totalCount: allItems.length,
+                  label: _selectedRole == 'ngo' ? 'NGO Registrations' : 'Donor Joins',
                 ),
               ],
               const SizedBox(height: 32),
@@ -368,7 +368,46 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
     );
   }
 
+  Widget _buildRoleTab(String label, String value, AppColorSet colors) {
+    final selected = _selectedRole == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() {
+          _selectedRole = value;
+          _selectedTab = 'pending';
+        }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? colors.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? AppColors.primary : colors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTabChip(String label, int count, String tabValue, Color activeColor) {
+    final colors = context.colors;
     final isSelected = _selectedTab == tabValue;
     return GestureDetector(
       onTap: () {
@@ -379,10 +418,10 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? activeColor.withValues(alpha: 0.15) : AppColors.surfaceContainerLow,
+          color: isSelected ? activeColor.withValues(alpha: 0.15) : colors.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? activeColor : AppColors.surfaceContainerHighest,
+            color: isSelected ? activeColor : colors.outlineVariant,
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
@@ -394,7 +433,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
               style: GoogleFonts.publicSans(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                color: isSelected ? activeColor : AppColors.textSecondary,
+                color: isSelected ? activeColor : colors.textSecondary,
               ),
             ),
             const SizedBox(width: 6),
@@ -403,7 +442,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? activeColor : AppColors.textSecondary,
+                color: isSelected ? activeColor : colors.textSecondary,
               ),
             ),
           ],
@@ -418,12 +457,14 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
 // ─────────────────────────────────────────────
 class _NgoCard extends StatelessWidget {
   final NgoApprovalItem item;
+  final String role;
   final VoidCallback onApprove;
   final VoidCallback onReject;
   final VoidCallback onMarkPending;
 
   const _NgoCard({
     required this.item,
+    required this.role,
     required this.onApprove,
     required this.onReject,
     required this.onMarkPending,
@@ -431,29 +472,45 @@ class _NgoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+    final bool isNgo = role == 'ngo';
     Color statusColor;
     String statusText;
-    switch (item.status.toLowerCase()) {
-      case 'approved':
-        statusColor = AppColors.secondary;
-        statusText = 'APPROVED';
-        break;
-      case 'rejected':
-        statusColor = AppColors.error;
-        statusText = 'REJECTED';
-        break;
-      default:
-        statusColor = AppColors.tertiary;
-        statusText = 'PENDING';
+
+    if (isNgo) {
+      switch (item.status.toLowerCase()) {
+        case 'approved':
+          statusColor = AppColors.secondary;
+          statusText = 'APPROVED';
+          break;
+        case 'rejected':
+          statusColor = AppColors.error;
+          statusText = 'REJECTED';
+          break;
+        default:
+          statusColor = AppColors.tertiary;
+          statusText = 'PENDING';
+      }
+    } else {
+      // Donor "Verified" logic
+      final bool isVerified = item.status == 'true' || item.status == 'approved'; // Need to check how 'verified' field was passed
+      // Wait, NgoApprovalItem.fromMap uses 'status' field.
+      // But for donors, it's 'verified' (bool).
+      // Let's re-examine NgoApprovalItem.fromMap.
+      // It does: status: map['status'] ?? 'pending'
+      // For donors, we should probably pass the 'verified' field as status.
+
+      statusColor = item.status == 'true' || item.status == 'approved' ? AppColors.secondary : AppColors.tertiary;
+      statusText = item.status == 'true' || item.status == 'approved' ? 'VERIFIED' : 'UNVERIFIED';
     }
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
+        color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,7 +540,7 @@ class _NgoCard extends StatelessWidget {
                       style: GoogleFonts.publicSans(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: colors.textPrimary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -493,7 +550,7 @@ class _NgoCard extends StatelessWidget {
                       item.registrationId,
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: AppColors.textSecondary,
+                        color: colors.textSecondary,
                       ),
                     ),
                   ],
@@ -519,7 +576,7 @@ class _NgoCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(color: AppColors.surfaceContainerHighest, height: 1),
+          Divider(color: colors.outlineVariant, height: 1),
           const SizedBox(height: 12),
 
           // Details
@@ -534,59 +591,55 @@ class _NgoCard extends StatelessWidget {
           const SizedBox(height: 14),
 
           // Action Buttons
-          if (item.status == 'approved')
+          if (statusText == 'APPROVED' || statusText == 'VERIFIED')
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: onMarkPending,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
-                      side: const BorderSide(color: AppColors.surfaceContainerHighest),
+                      foregroundColor: colors.textSecondary,
+                      side: BorderSide(color: colors.outlineVariant),
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: Text('Mark Pending',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    child: Text(isNgo ? 'Mark Pending' : 'Unverify',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: onReject,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.error.withValues(alpha: 0.15),
-                      foregroundColor: AppColors.error,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                if (isNgo) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: onReject,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.error.withValues(alpha: 0.15),
+                        foregroundColor: AppColors.error,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: Text('Reject NGO',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
-                    child: Text('Reject NGO',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
-                ),
+                ],
               ],
             )
-          else if (item.status == 'rejected')
+          else if (statusText == 'REJECTED')
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: onMarkPending,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
-                      side: const BorderSide(color: AppColors.surfaceContainerHighest),
+                      foregroundColor: colors.textSecondary,
+                      side: BorderSide(color: colors.outlineVariant),
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     child: Text('Mark Pending',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -598,12 +651,10 @@ class _NgoCard extends StatelessWidget {
                       foregroundColor: AppColors.secondary,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     child: Text('Approve NGO',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                 ),
               ],
@@ -611,22 +662,21 @@ class _NgoCard extends StatelessWidget {
           else
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onReject,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.error,
-                      side: const BorderSide(color: AppColors.error),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                if (isNgo)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onReject,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.error,
+                        side: const BorderSide(color: AppColors.error),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: Text('Reject',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
-                    child: Text('Reject',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
-                ),
-                const SizedBox(width: 10),
+                if (isNgo) const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: onApprove,
@@ -635,12 +685,10 @@ class _NgoCard extends StatelessWidget {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: Text('Approve',
-                        style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    child: Text(isNgo ? 'Approve' : 'Verify',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                 ),
               ],
@@ -660,18 +708,19 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: AppColors.textSecondary),
+          Icon(icon, size: 14, color: colors.textSecondary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
               style: GoogleFonts.inter(
                 fontSize: 12,
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -691,21 +740,24 @@ class _DetailRow extends StatelessWidget {
 class _WeeklyTrendSection extends StatelessWidget {
   final List<double> trendValues;
   final int totalCount;
+  final String label;
 
   const _WeeklyTrendSection({
     required this.trendValues,
     required this.totalCount,
+    required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final hasData = trendValues.any((v) => v > 0);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
+        color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -714,27 +766,26 @@ class _WeeklyTrendSection extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Weekly Applications',
+                label,
                 style: GoogleFonts.publicSans(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+                  color: colors.textPrimary,
                 ),
               ),
               Text(
                 '$totalCount total',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: AppColors.textSecondary,
+                  color: colors.textSecondary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            hasData ? 'NGO registrations in last 7 days' : 'No registrations in last 7 days',
-            style: GoogleFonts.inter(
-                fontSize: 11, color: AppColors.textSecondary),
+            hasData ? 'Applications in last 7 days' : 'No activity in last 7 days',
+            style: GoogleFonts.inter(fontSize: 11, color: colors.textSecondary),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -751,10 +802,10 @@ class _WeeklyTrendSection extends StatelessWidget {
             children: [
               Text('7 days ago',
                   style: GoogleFonts.inter(
-                      fontSize: 10, color: AppColors.textSecondary)),
+                      fontSize: 10, color: colors.textSecondary)),
               Text('Today',
                   style: GoogleFonts.inter(
-                      fontSize: 10, color: AppColors.textSecondary)),
+                      fontSize: 10, color: colors.textSecondary)),
             ],
           ),
         ],
@@ -772,6 +823,7 @@ class _EmptyStateForTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     IconData icon;
     String title;
     String subtitle;
@@ -807,14 +859,14 @@ class _EmptyStateForTab extends StatelessWidget {
               style: GoogleFonts.publicSans(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               subtitle,
               style: GoogleFonts.inter(
-                  fontSize: 13, color: AppColors.textSecondary),
+                  fontSize: 13, color: colors.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],

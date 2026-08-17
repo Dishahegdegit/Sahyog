@@ -28,19 +28,19 @@ class AppColors {
   // ==================== DARK THEME (SECONDARY) ====================
   // Background & Surfaces (Corporate Charcoal)
   static const Color darkBackground = Color(0xFF121416);
-  static const Color darkSurface = Color(0xFF121416);
-  static const Color darkSurfaceContainerLow = Color(0xFF1A1C1E);
-  static const Color darkSurfaceContainer = Color(0xFF1E2022);
-  static const Color darkSurfaceContainerHigh = Color(0xFF282A2C);
-  static const Color darkSurfaceContainerHighest = Color(0xFF333537);
-  static const Color darkCardColor = Color(0xFF1A1C1E);
+  static const Color darkSurface = Color(0xFF1E2023);
+  static const Color darkSurfaceContainerLow = Color(0xFF181A1C);
+  static const Color darkSurfaceContainer = Color(0xFF222529);
+  static const Color darkSurfaceContainerHigh = Color(0xFF2B2E33);
+  static const Color darkSurfaceContainerHighest = Color(0xFF383C42);
+  static const Color darkCardColor = Color(0xFF1E2023);
 
-  // Text / Content
-  static const Color darkTextPrimary = Color(0xFFE2E2E5);
-  static const Color darkTextSecondary = Color(0xFFA98A80);
-  static const Color darkTextHint = Color(0xFF594139);
-  static const Color darkOnSurfaceVariant = Color(0xFFE1BFB5);
-  static const Color darkError = Color(0xFFFFB4AB);
+  // Text / Content (High Contrast & High Legibility)
+  static const Color darkTextPrimary = Color(0xFFF3F4F6);
+  static const Color darkTextSecondary = Color(0xFF9CA3AF);
+  static const Color darkTextHint = Color(0xFF6B7280);
+  static const Color darkOnSurfaceVariant = Color(0xFFD1D5DB);
+  static const Color darkError = Color(0xFFFF6B6B);
 
   // ==================== SHARED BRAND COLORS ====================
   // Primary (Burnt Orange)

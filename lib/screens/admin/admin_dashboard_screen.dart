@@ -3,54 +3,83 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart';
+import '../../theme/app_theme.dart';
 import '../../models/admin/admin_stats.dart';
+import 'ngo_approval_screen.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as ll;
 
-// ─────────────────────────────────────────────
-//  Bar Chart Painter
-// ─────────────────────────────────────────────
-class _BarChartPainter extends CustomPainter {
+// ─────────────────────────────────────────────────────────────────
+//  Area Chart Painter (light-theme, smooth line with fill)
+// ─────────────────────────────────────────────────────────────────
+class _AreaChartPainter extends CustomPainter {
   final List<double> values;
-  _BarChartPainter(this.values);
+  final Color lineColor;
+  final Color fillColor;
+
+  _AreaChartPainter(this.values, this.lineColor, this.fillColor);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (values.isEmpty) return;
-    final count = values.length;
-    final totalGap = size.width * 0.35;
-    final barWidth = (size.width - totalGap) / count;
-    final gap = totalGap / (count + 1);
     final maxVal = values.reduce(math.max);
-    final hasData = maxVal > 0;
+    if (maxVal == 0) return;
 
+    final count = values.length;
+    final dx = size.width / (count - 1);
+
+    List<Offset> points = [];
     for (int i = 0; i < count; i++) {
-      final x = gap + i * (barWidth + gap);
-      final norm = hasData ? (values[i] / maxVal) : 0.0;
-      final barH = hasData ? (size.height * 0.8 * norm) : 4.0;
-      final rect = Rect.fromLTWH(x, size.height - barH, barWidth, barH);
-      final isHighlight = hasData && i == count - 1;
+      final x = i * dx;
+      final y = size.height - (values[i] / maxVal) * size.height * 0.85;
+      points.add(Offset(x, y));
+    }
 
-      final paint = Paint()
-        ..style = PaintingStyle.fill
+    // Smooth path (cubic bezier)
+    final linePath = Path()..moveTo(points[0].dx, points[0].dy);
+    for (int i = 0; i < points.length - 1; i++) {
+      final cp1 = Offset((points[i].dx + points[i + 1].dx) / 2, points[i].dy);
+      final cp2 = Offset((points[i].dx + points[i + 1].dx) / 2, points[i + 1].dy);
+      linePath.cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, points[i + 1].dx, points[i + 1].dy);
+    }
+
+    // Fill area
+    final fillPath = Path.from(linePath)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(
+      fillPath,
+      Paint()
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: isHighlight
-              ? [AppColors.primary, AppColors.primary.withValues(alpha: 0.5)]
-              : [const Color(0xFF3D2B20), const Color(0xFF2A1D15)],
-        ).createShader(rect);
+          colors: [fillColor, fillColor.withValues(alpha: 0.0)],
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
+    );
 
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(3)),
-        paint,
-      );
-    }
-
-    canvas.drawLine(
-      Offset(0, size.height),
-      Offset(size.width, size.height),
+    // Line
+    canvas.drawPath(
+      linePath,
       Paint()
-        ..color = AppColors.surfaceContainerHighest
-        ..strokeWidth = 0.8,
+        ..color = lineColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    // End dot
+    canvas.drawCircle(
+      points.last,
+      4,
+      Paint()..color = lineColor,
+    );
+    canvas.drawCircle(
+      points.last,
+      2.5,
+      Paint()..color = Colors.white,
     );
   }
 
@@ -58,11 +87,12 @@ class _BarChartPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => true;
 }
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 //  Main Screen
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({super.key});
+  final void Function(int)? onNavigate;
+  const AdminDashboardScreen({super.key, this.onNavigate});
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -71,11 +101,48 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   String _period = '30D';
 
+  double _donationQuantityKg(Map<String, dynamic> data) {
+    for (final key in ['quantityKg', 'quantity', 'weight']) {
+      final v = data[key];
+      if (v is num) return v.toDouble();
+      if (v != null) {
+        final parsed = double.tryParse(v.toString());
+        if (parsed != null && parsed > 0) return parsed;
+      }
+    }
+    final foodQty = (data['foodQuantity'] ?? '').toString();
+    final kgMatch = RegExp(r'([\d.]+)\s*kg', caseSensitive: false).firstMatch(foodQty);
+    if (kgMatch != null) return double.tryParse(kgMatch.group(1)!) ?? 0;
+    final numMatch = RegExp(r'^([\d.]+)').firstMatch(foodQty);
+    if (numMatch != null) return double.tryParse(numMatch.group(1)!) ?? 0;
+    return 0;
+  }
+
+  int _donationServings(Map<String, dynamic> data) {
+    final raw = data['servings'] ?? data['beneficiariesCount'] ?? data['beneficiaries'];
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '0') ?? 0;
+  }
+
+  bool _isCollectedStatus(String status) {
+    const collected = {
+      'accepted', 'picked up', 'volunteer assigned', 'on delivery',
+      'completed', 'delivered', 'verified',
+    };
+    return collected.contains(status);
+  }
+
+  bool _isDistributedStatus(String status) {
+    const distributed = {'delivered', 'completed', 'verified'};
+    return distributed.contains(status);
+  }
+
+  // ── Data fetch ──────────────────────────────────────────────
   Future<AdminStats> _fetchStats() async {
     final db = FirebaseFirestore.instance;
 
     final usersSnap = await db.collection('users').get();
-    int donors = 0, ngos = 0, pendingNgos = 0, volunteers = 0;
+    int donors = 0, ngos = 0, pendingNgos = 0;
 
     for (final doc in usersSnap.docs) {
       final data = doc.data();
@@ -85,16 +152,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ngos++;
         if ((data['status'] ?? 'pending') == 'pending') pendingNgos++;
       }
-      if (role == 'volunteer') volunteers++;
     }
 
+    int activeVolunteers = 0;
     try {
       final volSnap = await db.collection('volunteers').get();
-      volunteers += volSnap.docs.length;
+      activeVolunteers = volSnap.docs.where((doc) {
+        final status = (doc.data()['status'] ?? 'Available').toString().toLowerCase();
+        return status == 'available' || status == 'on delivery';
+      }).length;
     } catch (_) {}
 
-    double totalKg = 0;
+    double foodCollectedKg = 0;
+    double foodDistributedKg = 0;
     int totalBeneficiaries = 0;
+    int donationsCount = 0;
     List<Map<String, dynamic>> logisticsList = [];
     List<double> chartBuckets = List.filled(12, 0.0);
 
@@ -104,26 +176,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           .orderBy('createdAt', descending: true)
           .get();
 
+      donationsCount = donationsSnap.docs.length;
+
       for (final doc in donationsSnap.docs) {
         final data = doc.data();
-        final qty =
-            (data['quantityKg'] ?? data['quantity'] ?? data['weight'] ?? 0)
-                .toDouble();
-        final benRaw = data['beneficiariesCount'] ?? data['beneficiaries'] ?? 0;
-        final ben = (benRaw is num)
-            ? benRaw.toInt()
-            : (int.tryParse(benRaw.toString()) ?? 0);
+        final status = (data['status'] ?? 'pending').toString().toLowerCase();
+        final qty = _donationQuantityKg(data);
+        final servings = _donationServings(data);
 
-        totalKg += qty;
-        totalBeneficiaries += ben;
+        if (_isCollectedStatus(status)) foodCollectedKg += qty;
+        if (_isDistributedStatus(status)) {
+          foodDistributedKg += qty;
+          totalBeneficiaries += servings;
+        }
 
         if (logisticsList.length < 5) {
           logisticsList.add({
-            'title': data['title'] ?? data['foodItem'] ?? 'Donation Item',
+            'title': data['title'] ?? data['foodItem'] ?? data['foodType'] ?? 'Donation Item',
             'subtitle':
-                data['ngoName'] ?? data['donorName'] ?? data['location'] ?? '',
-            'amount': qty > 0 ? '+${qty.toStringAsFixed(0)} kg' : '',
-            'status': (data['status'] ?? 'pending').toString().toUpperCase(),
+                data['ngoName'] ?? data['donorName'] ?? data['location'] ?? data['pickupAddress'] ?? '',
+            'amount': qty > 0 ? '+${qty.toStringAsFixed(0)} kg' : (servings > 0 ? '+$servings meals' : ''),
+            'status': status.toUpperCase(),
           });
         }
 
@@ -140,14 +213,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         if (created != null) {
           final now = DateTime.now();
           final diffDays = now.difference(created).inDays;
-          int daysLimit =
-              _period == '7D' ? 7 : (_period == '90D' ? 90 : 30);
+          int daysLimit = _period == '7D' ? 7 : (_period == '90D' ? 90 : 30);
           if (diffDays >= 0 && diffDays <= daysLimit) {
-            int bucket =
-                ((1.0 - (diffDays / daysLimit)) * 11).clamp(0, 11).toInt();
-            chartBuckets[bucket] += qty > 0 ? qty : 1;
+            int bucket = ((1.0 - (diffDays / daysLimit)) * 11).clamp(0, 11).toInt();
+            chartBuckets[bucket] += qty > 0 ? qty : (servings > 0 ? servings.toDouble() : 1);
           }
         }
+      }
+    } catch (_) {}
+
+    // Pending NGOs for approvals section
+    List<Map<String, dynamic>> pendingNgosList = [];
+    try {
+      final pendingSnap = await db
+          .collection('users')
+          .where('role', isEqualTo: 'ngo')
+          .where('status', isEqualTo: 'pending')
+          .limit(3)
+          .get();
+      for (final doc in pendingSnap.docs) {
+        pendingNgosList.add({'uid': doc.id, ...doc.data()});
       }
     } catch (_) {}
 
@@ -176,146 +261,76 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       donorsCount: donors,
       ngosCount: ngos,
       pendingNgosCount: pendingNgos,
-      volunteersCount: volunteers,
-      foodTons: totalKg / 1000.0,
+      donationsCount: donationsCount,
+      volunteersCount: activeVolunteers,
+      foodCollectedKg: foodCollectedKg,
+      foodDistributedKg: foodDistributedKg,
+      foodTons: foodCollectedKg / 1000.0,
       totalBeneficiaries: totalBeneficiaries,
       chartValues: chartBuckets,
       lowStockCount: lowStockCount,
       recentLogistics: logisticsList,
       activeOperations: operationsList,
       qualityScorePercent: null,
+      pendingNgosList: pendingNgosList,
     );
   }
 
+  // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     return FutureBuilder<AdminStats>(
       future: _fetchStats(),
       builder: (context, snapshot) {
         final stats = snapshot.data;
-        final isLoading =
-            snapshot.connectionState == ConnectionState.waiting;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
         return RefreshIndicator(
           color: AppColors.primary,
-          backgroundColor: AppColors.surfaceContainerLow,
+          backgroundColor: colors.surface,
           onRefresh: () async => setState(() {}),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Section Label ──
-                Text(
-                  'OVERVIEW',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Platform Summary',
-                  style: GoogleFonts.publicSans(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+                // ── Header ──────────────────────────────────────
+                _buildHeader(colors),
                 const SizedBox(height: 20),
 
-                // ── 2x2 Stats Grid (fixed, always) ──
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.6,
-                  children: [
-                    _StatCard(
-                      icon: Icons.person_outline,
-                      label: 'DONORS',
-                      value: isLoading ? '--' : '${stats?.donorsCount ?? 0}',
-                      badge: 'Live',
-                      badgeColor: AppColors.secondary,
-                    ),
-                    _StatCard(
-                      icon: Icons.shield_outlined,
-                      label: 'NGOS',
-                      value: isLoading ? '--' : '${stats?.ngosCount ?? 0}',
-                      badge: 'Live',
-                      badgeColor: AppColors.textSecondary,
-                    ),
-                    _StatCard(
-                      icon: Icons.group_outlined,
-                      label: 'VOLUNTEERS',
-                      value: isLoading
-                          ? '--'
-                          : '${stats?.volunteersCount ?? 0}',
-                      badge: 'Live',
-                      badgeColor: AppColors.secondary,
-                    ),
-                    _StatCard(
-                      icon: Icons.restaurant_outlined,
-                      label: 'FOOD (TONS)',
-                      value: isLoading
-                          ? '--'
-                          : (stats?.foodTons ?? 0) > 0
-                              ? stats!.foodTons.toStringAsFixed(2)
-                              : '0',
-                      badge: 'Live',
-                      badgeColor: Colors.white54,
-                      isHighlighted: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // ── Beneficiaries Banner ──
-                _BeneficiariesCard(
-                  beneficiaries: stats?.totalBeneficiaries ?? 0,
-                  pendingNgos: stats?.pendingNgosCount ?? 0,
-                  isLoading: isLoading,
-                ),
-                const SizedBox(height: 20),
-
-                // ── Trends ──
-                _TrendsSection(
-                  period: _period,
-                  onPeriodChanged: (p) => setState(() => _period = p),
-                  chartValues:
-                      stats?.chartValues ?? List.filled(12, 0.0),
-                ),
+                // ── Stat Cards Row ───────────────────────────────
+                _buildStatCardsRow(stats, isLoading),
                 const SizedBox(height: 16),
 
-                // ── Active Operation ──
-                _ActiveOperationCard(
-                  operations: stats?.activeOperations ?? [],
-                ),
+                // ── Beneficiaries Banner ─────────────────────────
+                _buildBeneficiariesBanner(stats, isLoading),
                 const SizedBox(height: 16),
 
-                // ── Low Stock Alert ──
+                // ── Donation Trends Chart ────────────────────────
+                _buildTrendsCard(stats, isLoading),
+                const SizedBox(height: 16),
+
+                // ── Pending NGO Approvals ────────────────────────
+                _buildPendingNgos(stats, isLoading),
+                const SizedBox(height: 16),
+
+                // ── Recent Activity Feed ─────────────────────────
+                _buildRecentActivity(stats, isLoading),
+
+                // ── Low Stock Alert ──────────────────────────────
                 if ((stats?.lowStockCount ?? 0) > 0) ...[
-                  _AlertRow(
+                  const SizedBox(height: 16),
+                  _buildAlertCard(
                     icon: Icons.warning_amber_rounded,
                     iconColor: AppColors.tertiary,
                     title: 'Low Stock Alerts',
-                    subtitle:
-                        '${stats!.lowStockCount} NGO(s) requiring restock',
+                    subtitle: '${stats!.lowStockCount} NGO(s) need restocking',
                   ),
-                  const SizedBox(height: 16),
                 ],
-
-                // ── Recent Logistics ──
-                _RecentLogisticsSection(
-                  logistics: stats?.recentLogistics ?? [],
-                  isLoading: isLoading,
-                ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
+                _buildMiniMapCard(),
               ],
             ),
           ),
@@ -323,422 +338,522 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       },
     );
   }
-}
 
-// ─────────────────────────────────────────────
-//  Stat Card
-// ─────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String badge;
-  final Color badgeColor;
-  final bool isHighlighted;
-
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.badge,
-    required this.badgeColor,
-    this.isHighlighted = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg =
-        isHighlighted ? AppColors.primary : AppColors.surfaceContainerLow;
-    final textColor = isHighlighted ? Colors.white : AppColors.textPrimary;
-    final subColor =
-        isHighlighted ? Colors.white70 : AppColors.textSecondary;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: isHighlighted
-            ? null
-            : Border.all(color: AppColors.surfaceContainerHighest),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon,
-                  color: isHighlighted
-                      ? Colors.white70
-                      : AppColors.textSecondary,
-                  size: 18),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: isHighlighted
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : badgeColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  badge,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: isHighlighted ? Colors.white : badgeColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Column(
+  // ── Section: Header ───────────────────────────────────────────
+  Widget _buildHeader(AppColorSet colors) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: subColor,
-                    letterSpacing: 0.8,
-                  )),
-              const SizedBox(height: 4),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  value,
-                  style: GoogleFonts.publicSans(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: textColor,
-                    height: 1.0,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-//  Beneficiaries Card
-// ─────────────────────────────────────────────
-class _BeneficiariesCard extends StatelessWidget {
-  final int beneficiaries;
-  final int pendingNgos;
-  final bool isLoading;
-
-  const _BeneficiariesCard({
-    required this.beneficiaries,
-    required this.pendingNgos,
-    required this.isLoading,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Icon(Icons.groups_outlined,
-                  color: AppColors.textSecondary, size: 20),
-              if (pendingNgos > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.tertiary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$pendingNgos pending NGO(s)',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.tertiary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text('TOTAL BENEFICIARIES',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.8,
-              )),
-          const SizedBox(height: 4),
-          Text(
-            isLoading ? '--' : '$beneficiaries',
-            style: GoogleFonts.publicSans(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-              height: 1.0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-//  Trends Section
-// ─────────────────────────────────────────────
-class _TrendsSection extends StatelessWidget {
-  final String period;
-  final ValueChanged<String> onPeriodChanged;
-  final List<double> chartValues;
-
-  const _TrendsSection({
-    required this.period,
-    required this.onPeriodChanged,
-    required this.chartValues,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasData = chartValues.any((v) => v > 0);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Trends',
-                      style: GoogleFonts.publicSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      )),
-                  const SizedBox(height: 2),
-                  Text(
-                    hasData
-                        ? 'Donation volume ($period)'
-                        : 'No data yet',
-                    style: GoogleFonts.inter(
-                        fontSize: 11, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
               Row(
-                children: ['7D', '30D', '90D'].map((p) {
-                  final isActive = p == period;
-                  return GestureDetector(
-                    onTap: () => onPeriodChanged(p),
-                    child: Container(
-                      margin: const EdgeInsets.only(left: 4),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? AppColors.surfaceContainerHighest
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(p,
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: isActive
-                                ? AppColors.textPrimary
-                                : AppColors.textSecondary,
-                          )),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 120,
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: _BarChartPainter(chartValues),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('$period Ago',
-                  style: GoogleFonts.inter(
-                      fontSize: 10, color: AppColors.textSecondary)),
-              Text('Today',
-                  style: GoogleFonts.inter(
-                      fontSize: 10, color: AppColors.textSecondary)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-//  Active Operation Card
-// ─────────────────────────────────────────────
-class _ActiveOperationCard extends StatelessWidget {
-  final List<Map<String, dynamic>> operations;
-  const _ActiveOperationCard({required this.operations});
-
-  @override
-  Widget build(BuildContext context) {
-    if (operations.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.surfaceContainerHighest),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.campaign_outlined,
-                  color: AppColors.primary, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('No Active Operations',
-                      style: GoogleFonts.publicSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      )),
-                  const SizedBox(height: 2),
+                  Container(
+                    width: 4,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Text(
-                    'Active campaigns & drives will appear here',
-                    style: GoogleFonts.inter(
-                        fontSize: 12, color: AppColors.textSecondary),
+                    'Overview',
+                    style: GoogleFonts.publicSans(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Super Admin',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Text(
+                  'Platform overview & management',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      );
-    }
+      ],
+    );
+  }
 
-    final topOp = operations.first;
+  // ── Section: Stat Cards ───────────────────────────────────────
+  Widget _buildStatCardsRow(AdminStats? stats, bool isLoading) {
+    String fmtKg(double kg) => kg > 0 ? kg.toStringAsFixed(0) : '0';
+
+    final cards = [
+      _StatCardData(
+        icon: Icons.volunteer_activism_outlined,
+        label: 'Total Donors',
+        value: isLoading ? '--' : '${stats?.donorsCount ?? 0}',
+        tint: AppColors.primary,
+        isPrimary: true,
+      ),
+      _StatCardData(
+        icon: Icons.shield_outlined,
+        label: 'Total NGOs',
+        value: isLoading ? '--' : '${stats?.ngosCount ?? 0}',
+        tint: AppColors.secondary,
+      ),
+      _StatCardData(
+        icon: Icons.inventory_2_outlined,
+        label: 'Total Donations',
+        value: isLoading ? '--' : '${stats?.donationsCount ?? 0}',
+        tint: const Color(0xFF4A90D9),
+      ),
+      _StatCardData(
+        icon: Icons.people_outline,
+        label: 'Active Volunteers',
+        value: isLoading ? '--' : '${stats?.volunteersCount ?? 0}',
+        tint: const Color(0xFF7C63D4),
+      ),
+      _StatCardData(
+        icon: Icons.restaurant_outlined,
+        label: 'Food Collected',
+        value: isLoading ? '--' : '${fmtKg(stats?.foodCollectedKg ?? 0)} kg',
+        tint: AppColors.tertiary,
+      ),
+      _StatCardData(
+        icon: Icons.local_shipping_outlined,
+        label: 'Food Distributed',
+        value: isLoading ? '--' : '${fmtKg(stats?.foodDistributedKg ?? 0)} kg',
+        tint: const Color(0xFF2E9E6A),
+      ),
+    ];
+
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.35,
+      children: cards.map((c) => _StatCard(data: c)).toList(),
+    );
+  }
+
+  // ── Section: Beneficiaries Banner ─────────────────────────────
+  Widget _buildBeneficiariesBanner(AdminStats? stats, bool isLoading) {
     return Container(
-      height: 160,
-      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
         gradient: const LinearGradient(
+          colors: [AppColors.primary, Color(0xFFFF9A6C)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF2A1A0E), Color(0xFF1C140C)],
         ),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.3),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: Stack(
+      child: Row(
         children: [
-          Positioned(
-            bottom: 14,
-            left: 14,
-            right: 14,
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.groups_outlined, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.secondary.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text('ACTIVE OPERATION',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 1.0,
-                      )),
-                ),
-                const SizedBox(height: 6),
                 Text(
-                  topOp['title'] ?? topOp['name'] ?? 'Active Operation',
+                  'Total Beneficiaries',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isLoading ? '--' : '${stats?.totalBeneficiaries ?? 0}',
                   style: GoogleFonts.publicSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
+                    height: 1.1,
+                  ),
+                ),
+                Text(
+                  'people supported',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.7),
                   ),
                 ),
               ],
             ),
           ),
+          if ((stats?.pendingNgosCount ?? 0) > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                '${stats!.pendingNgosCount} pending',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────
-//  Alert Row
-// ─────────────────────────────────────────────
-class _AlertRow extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
+  // ── Section: Trends Chart ─────────────────────────────────────
+  Widget _buildTrendsCard(AdminStats? stats, bool isLoading) {
+    final colors = context.colors;
+    final chartValues = stats?.chartValues ?? List.filled(12, 0.0);
+    final hasData = chartValues.any((v) => v > 0);
 
-  const _AlertRow({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Donation Trends',
+                    style: GoogleFonts.publicSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    hasData ? 'Volume over past $_period' : 'No data yet',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              // Period filter tabs
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: ['7D', '30D', '90D'].map((p) {
+                    final isActive = p == _period;
+                    return GestureDetector(
+                      onTap: () => setState(() => _period = p),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: isActive ? AppColors.primary : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: isActive
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.primary.withValues(alpha: 0.3),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  )
+                                ]
+                              : [],
+                        ),
+                        child: Text(
+                          p,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                            color: isActive ? Colors.white : colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (isLoading)
+            const SizedBox(
+              height: 120,
+              child: Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2)),
+            )
+          else
+            SizedBox(
+              height: 120,
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: _AreaChartPainter(
+                  chartValues,
+                  AppColors.primary,
+                  AppColors.primary.withValues(alpha: 0.18),
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$_period ago',
+                style: GoogleFonts.inter(fontSize: 10, color: colors.textSecondary),
+              ),
+              Text(
+                'Today',
+                style: GoogleFonts.inter(fontSize: 10, color: colors.textSecondary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Section: Pending NGO Approvals ────────────────────────────
+  Widget _buildPendingNgos(AdminStats? stats, bool isLoading) {
+    final colors = context.colors;
+    final pending = stats?.pendingNgosList ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Pending NGO Approvals',
+              style: GoogleFonts.publicSans(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+              ),
+            ),
+            if (pending.isNotEmpty)
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NgoApprovalScreen()),
+                ),
+                child: Text(
+                  'View All →',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (isLoading)
+          _shimmerCard(colors)
+        else if (pending.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_outline, color: AppColors.secondary, size: 22),
+                const SizedBox(width: 12),
+                Text(
+                  'No pending approvals',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              children: pending.asMap().entries.map((entry) {
+                final i = entry.key;
+                final ngo = entry.value;
+                final isLast = i == pending.length - 1;
+                return _PendingNgoRow(
+                  uid: ngo['uid'] ?? '',
+                  name: ngo['name'] ?? ngo['organizationName'] ?? 'NGO',
+                  address: ngo['address'] ?? ngo['officialAddress'] ?? '',
+                  isLast: isLast,
+                  onApproveReject: () => setState(() {}),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Section: Recent Activity ──────────────────────────────────
+  Widget _buildRecentActivity(AdminStats? stats, bool isLoading) {
+    final colors = context.colors;
+    final logistics = stats?.recentLogistics ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Recent Activity',
+          style: GoogleFonts.publicSans(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (isLoading)
+          _shimmerCard(colors)
+        else if (logistics.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                'No recent donation activity yet.',
+                style: GoogleFonts.inter(fontSize: 13, color: colors.textSecondary),
+              ),
+            ),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              children: logistics.asMap().entries.map((entry) {
+                final i = entry.key;
+                final item = entry.value;
+                final isLast = i == logistics.length - 1;
+                final isCompleted = (item['status'] == 'COMPLETED' || item['status'] == 'VERIFIED');
+                return _ActivityRow(
+                  title: item['title'] ?? 'Donation',
+                  subtitle: item['subtitle'] ?? '',
+                  amount: item['amount'] ?? '',
+                  status: item['status'] ?? 'PENDING',
+                  dotColor: isCompleted ? AppColors.secondary : AppColors.tertiary,
+                  isLast: isLast,
+                );
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Section: Alert Card ───────────────────────────────────────
+  Widget _buildAlertCard({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+  }) {
+    final colors = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: iconColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: iconColor.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -752,178 +867,515 @@ class _AlertRow extends StatelessWidget {
                     style: GoogleFonts.publicSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: colors.textPrimary,
                     )),
                 const SizedBox(height: 2),
                 Text(subtitle,
                     style: GoogleFonts.inter(
-                        fontSize: 12, color: AppColors.textSecondary)),
+                        fontSize: 12, color: colors.textSecondary)),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right,
-              color: AppColors.textSecondary, size: 20),
+        ],
+      ),
+    );
+  }
+
+  // ── Shimmer placeholder ───────────────────────────────────────
+  Widget _shimmerCard(AppColorSet colors) {
+    return Container(
+      height: 72,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+      ),
+    );
+  }
+
+  // ── Mini Map Card ─────────────────────────────────────────────
+  Widget _buildMiniMapCard() {
+    final colors = context.colors;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Map Tracking',
+                style: GoogleFonts.publicSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => widget.onNavigate?.call(3),
+                child: Text(
+                  'Open full map →',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 140,
+              width: double.infinity,
+              child: Stack(
+                children: [
+                  FlutterMap(
+                    options: const MapOptions(
+                      initialCenter: ll.LatLng(19.0760, 72.8777),
+                      initialZoom: 10.0,
+                      interactionOptions: InteractionOptions(flags: InteractiveFlag.none),
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+                        userAgentPackageName: 'com.sahyog.app',
+                      ),
+                    ],
+                  ),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onNavigate?.call(3),
+                    child: Container(
+                      color: Colors.transparent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────
-//  Recent Logistics Section
-// ─────────────────────────────────────────────
-class _RecentLogisticsSection extends StatelessWidget {
-  final List<Map<String, dynamic>> logistics;
-  final bool isLoading;
+// ─────────────────────────────────────────────────────────────────
+//  Stat Card Data Model
+// ─────────────────────────────────────────────────────────────────
+class _StatCardData {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color tint;
+  final bool isPrimary;
+  const _StatCardData({required this.icon, required this.label, required this.value, required this.tint, this.isPrimary = false});
+}
 
-  const _RecentLogisticsSection({
-    required this.logistics,
-    required this.isLoading,
-  });
+// ─────────────────────────────────────────────────────────────────
+class _StatCard extends StatelessWidget {
+  final _StatCardData data;
+  const _StatCard({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Recent Logistics',
-            style: GoogleFonts.publicSans(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            )),
-        const SizedBox(height: 12),
-        if (isLoading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          )
-        else if (logistics.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.surfaceContainerHighest),
-            ),
-            child: Center(
-              child: Text(
-                'No recent logistics records in DB yet.',
-                style: GoogleFonts.inter(
-                    fontSize: 13, color: AppColors.textSecondary),
-              ),
-            ),
-          )
-        else
-          Column(
-            children: logistics.map((item) {
-              final badgeColor = (item['status'] == 'COMPLETED' ||
-                      item['status'] == 'VERIFIED')
-                  ? AppColors.secondary
-                  : AppColors.tertiary;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _LogItem(
-                  title: item['title'] ?? 'Logistics Item',
-                  subtitle: item['subtitle'] ?? '',
-                  badgeText: item['amount'] ?? '',
-                  badgeLabel: item['status'] ?? 'PENDING',
-                  badgeColor: badgeColor,
-                ),
-              );
-            }).toList(),
+    final colors = context.colors;
+    if (data.isPrimary) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppColors.primary, Color(0xFFFF8F5A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(data.icon, color: Colors.white, size: 16),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.85),
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    data.value,
+                    style: GoogleFonts.publicSans(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Icon badge
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: data.tint.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(data.icon, color: data.tint, size: 16),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  data.value,
+                  style: GoogleFonts.publicSans(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: colors.textPrimary,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Pending NGO Row
+// ─────────────────────────────────────────────────────────────────
+class _PendingNgoRow extends StatelessWidget {
+  final String uid;
+  final String name;
+  final String address;
+  final bool isLast;
+  final VoidCallback onApproveReject;
+
+  const _PendingNgoRow({
+    required this.uid,
+    required this.name,
+    required this.address,
+    required this.isLast,
+    required this.onApproveReject,
+  });
+
+  Future<void> _updateStatus(BuildContext context, String status) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'status': status,
+      });
+      onApproveReject();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(status == 'approved' ? '$name approved' : '$name rejected'),
+            backgroundColor: status == 'approved' ? AppColors.secondary : AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Action failed. Try again.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              // NGO icon
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.shield_outlined, color: AppColors.secondary, size: 18),
+              ),
+              const SizedBox(width: 12),
+              // Name + address
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: GoogleFonts.publicSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    if (address.isNotEmpty)
+                      Text(
+                        address,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Approve / Reject
+              _ActionChip(
+                label: 'Approve',
+                color: AppColors.secondary,
+                onTap: () => _updateStatus(context, 'approved'),
+              ),
+              const SizedBox(width: 6),
+              _ActionChip(
+                label: 'Reject',
+                color: AppColors.error,
+                onTap: () => _updateStatus(context, 'rejected'),
+              ),
+            ],
+          ),
+        ),
+        if (!isLast)
+          Divider(height: 1, color: AppColors.outlineVariant.withValues(alpha: 0.5), indent: 16, endIndent: 16),
       ],
     );
   }
 }
 
-class _LogItem extends StatelessWidget {
+class _ActionChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _ActionChip({required this.label, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Activity Row (timeline style)
+// ─────────────────────────────────────────────────────────────────
+class _ActivityRow extends StatelessWidget {
   final String title;
   final String subtitle;
-  final String badgeText;
-  final String badgeLabel;
-  final Color badgeColor;
+  final String amount;
+  final String status;
+  final Color dotColor;
+  final bool isLast;
 
-  const _LogItem({
+  const _ActivityRow({
     required this.title,
     required this.subtitle,
-    required this.badgeText,
-    required this.badgeLabel,
-    required this.badgeColor,
+    required this.amount,
+    required this.status,
+    required this.dotColor,
+    required this.isLast,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
-      ),
+    final colors = context.colors;
+    return IntrinsicHeight(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.local_shipping_outlined,
-                color: AppColors.primary, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
+          // Timeline indicator
+          Padding(
+            padding: const EdgeInsets.only(left: 18, top: 16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    )),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: GoogleFonts.inter(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: dotColor.withValues(alpha: 0.3), blurRadius: 4, spreadRadius: 1),
+                    ],
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 1.5,
+                      color: colors.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (badgeText.isNotEmpty)
-                Text(badgeText,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: badgeColor,
-                    )),
-              const SizedBox(height: 4),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: badgeColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(badgeLabel,
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: badgeColor,
-                      letterSpacing: 0.5,
-                    )),
+          const SizedBox(width: 14),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(top: 12, bottom: isLast ? 16 : 0, right: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      if (amount.isNotEmpty)
+                        Text(
+                          amount,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: dotColor,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(fontSize: 11, color: colors.textSecondary),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: dotColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: dotColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  if (!isLast) const SizedBox(height: 14),
+                ],
               ),
-            ],
+            ),
           ),
         ],
       ),
