@@ -21,6 +21,17 @@ class AppTheme {
       onError: Colors.white,
     ),
     textTheme: GoogleFonts.interTextTheme(),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.background,
+      elevation: 0,
+      foregroundColor: AppColors.textPrimary,
+      iconTheme: IconThemeData(color: AppColors.textPrimary),
+      titleTextStyle: TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
     cardTheme: const CardThemeData(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(16.0)),
@@ -46,11 +57,6 @@ class AppTheme {
     ),
     dividerColor: AppColors.outlineVariant,
     iconTheme: const IconThemeData(color: AppColors.textSecondary),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.primary,
-      foregroundColor: Colors.white,
-      elevation: 0,
-    ),
   );
 
   // ----------------- Dark Theme -----------------
@@ -71,6 +77,17 @@ class AppTheme {
       onError: Colors.black,
     ),
     textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.darkBackground,
+      elevation: 0,
+      foregroundColor: Colors.white,
+      iconTheme: IconThemeData(color: Colors.white),
+      titleTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
     cardTheme: const CardThemeData(
       color: AppColors.darkCardColor,
       shape: RoundedRectangleBorder(
@@ -97,11 +114,6 @@ class AppTheme {
     ),
     dividerColor: AppColors.darkSurfaceContainerHighest,
     iconTheme: const IconThemeData(color: AppColors.darkTextSecondary),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.primary,
-      foregroundColor: Colors.white,
-      elevation: 0,
-    ),
   );
 }
 

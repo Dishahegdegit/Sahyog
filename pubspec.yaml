@@ -11,7 +11,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # build by specifying --build-name and --build-number, respectively.
 # In Android, build-name is used as versionName while build-number used as versionCode.
 # Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
+# In iOS, build-name is used as CFBundleShortVersionString while build-number used as CFBundleVersion.
 # Read more about iOS versioning at
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
@@ -55,8 +55,6 @@ dependencies:
   # Utilities
   intl: ^0.19.0
   flutter_local_notifications: ^17.2.2
-  pdf: ^3.10.8
-  printing: ^5.11.1
   path_provider: ^2.1.2
 
   # Maps & Location
@@ -65,6 +63,10 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   shared_preferences: ^2.5.5
+
+  # PDF & Printing
+  pdf: ^3.11.1
+  printing: ^5.13.2
 
 dev_dependencies:
   flutter_test:

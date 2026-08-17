@@ -98,16 +98,6 @@ class _AdminHomeState extends State<AdminHome> {
     return (adminNameRaw.toLowerCase() == 'admin') ? 'Sahyog Admin' : adminNameRaw;
   }
 
-  String _resolveInitials(User? user, String adminName) {
-    if (adminName == 'Sahyog Admin') return '';
-    final displayName = user?.displayName;
-    if (displayName?.isNotEmpty == true) {
-      return displayName!.trim().split(' ').map((w) => w[0]).take(2).join().toUpperCase();
-    }
-    if (user?.email?.isNotEmpty == true) return user!.email![0].toUpperCase();
-    return 'A';
-  }
-
   Widget _buildSahyogIcon({required double size, required Color color, double padding = 6}) {
     return Container(
       padding: EdgeInsets.all(padding),
