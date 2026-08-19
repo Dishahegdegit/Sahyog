@@ -24,6 +24,10 @@ class DonationModel {
   final String? assignedVolunteerName;
   final String? assignedVolunteerPhone;
   final DateTime? createdAt;
+  final int? beneficiariesServed;
+  final DateTime? deliveredAt;
+  final String? deliveryLocation;
+  final String? foodDelivered;
 
   DonationModel({
     required this.id,
@@ -49,6 +53,10 @@ class DonationModel {
     this.assignedVolunteerName,
     this.assignedVolunteerPhone,
     this.createdAt,
+    this.beneficiariesServed,
+    this.deliveredAt,
+    this.deliveryLocation,
+    this.foodDelivered,
   });
 
   factory DonationModel.fromMap(Map<String, dynamic> map, String docId) {
@@ -84,6 +92,12 @@ class DonationModel {
       assignedVolunteerName: map['assignedVolunteerName'] as String?,
       assignedVolunteerPhone: map['assignedVolunteerPhone'] as String?,
       createdAt: parseDate(map['createdAt']),
+      beneficiariesServed: map['beneficiariesServed'] is int
+          ? map['beneficiariesServed'] as int
+          : int.tryParse(map['beneficiariesServed']?.toString() ?? ''),
+      deliveredAt: parseDate(map['deliveredAt']),
+      deliveryLocation: map['deliveryLocation'] as String?,
+      foodDelivered: map['foodDelivered'] as String?,
     );
   }
 
@@ -111,6 +125,10 @@ class DonationModel {
       'assignedVolunteerName': assignedVolunteerName,
       'assignedVolunteerPhone': assignedVolunteerPhone,
       'createdAt': (createdAt ?? DateTime.now()).toIso8601String(),
+      'beneficiariesServed': beneficiariesServed,
+      'deliveredAt': deliveredAt?.toIso8601String(),
+      'deliveryLocation': deliveryLocation,
+      'foodDelivered': foodDelivered,
     };
   }
 
@@ -122,6 +140,10 @@ class DonationModel {
     String? assignedVolunteerId,
     String? assignedVolunteerName,
     String? assignedVolunteerPhone,
+    int? beneficiariesServed,
+    DateTime? deliveredAt,
+    String? deliveryLocation,
+    String? foodDelivered,
   }) {
     return DonationModel(
       id: id,
@@ -147,6 +169,10 @@ class DonationModel {
       assignedVolunteerName: assignedVolunteerName ?? this.assignedVolunteerName,
       assignedVolunteerPhone: assignedVolunteerPhone ?? this.assignedVolunteerPhone,
       createdAt: createdAt,
+      beneficiariesServed: beneficiariesServed ?? this.beneficiariesServed,
+      deliveredAt: deliveredAt ?? this.deliveredAt,
+      deliveryLocation: deliveryLocation ?? this.deliveryLocation,
+      foodDelivered: foodDelivered ?? this.foodDelivered,
     );
   }
 }

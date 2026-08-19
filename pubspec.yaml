@@ -60,8 +60,8 @@ dependencies:
   # Maps & Location
   google_maps_flutter: ^2.9.0
   geolocator: ^13.0.1
-  flutter_map: ^7.0.2
-  latlong2: ^0.9.1
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
   shared_preferences: ^2.5.5
 
   # PDF & Printing

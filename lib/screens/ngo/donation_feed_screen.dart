@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../services/firestore_service.dart';
 
@@ -15,6 +15,8 @@ class DonationFeedScreen extends StatefulWidget {
 }
 
 class _DonationFeedScreenState extends State<DonationFeedScreen> {
+  NgoTheme get t => NgoTheme.of(context);
+
   final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchController = TextEditingController();
 
@@ -61,7 +63,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: t.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -83,7 +85,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                     return Center(
                       child: Text(
                         'Error loading donations. Please retry.',
-                        style: GoogleFonts.publicSans(color: AppColors.textSecondary),
+                        style: GoogleFonts.publicSans(color: t.textSecondary),
                       ),
                     );
                   }
@@ -114,69 +116,55 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
   // ─── SEARCH & FILTER HEADER ─────────────────────────────────────────────
 
   Widget _buildSearchAndFilters() {
-    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? 'ngo_demo';
 
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: AppColors.surfaceContainerLow,
+      decoration: BoxDecoration(
+        color: t.surfaceContainerLow,
         border: Border(
-          bottom: BorderSide(color: AppColors.surfaceContainerHighest, width: 1),
+          bottom: BorderSide(color: t.surfaceContainerHighest, width: 1),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Welcome Back Header
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(currentUid)
-                .snapshots(),
-            builder: (context, userSnap) {
-              // Read name from users doc first
-              String name = '';
-              if (userSnap.hasData && userSnap.data!.exists) {
-                final data = userSnap.data!.data() as Map<String, dynamic>;
-                name = (data['name'] as String? ?? '').trim();
-              }
-              // Fallback to Firebase Auth displayName
-              if (name.isEmpty) {
-                name = FirebaseAuth.instance.currentUser?.displayName?.trim() ?? '';
-              }
-
-              final String welcomeText = name.isNotEmpty
-                  ? 'Welcome back, $name!'
-                  : 'Welcome back!';
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      welcomeText,
-                      style: GoogleFonts.publicSans(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Discover and accept nearby food donations',
-                      style: GoogleFonts.publicSans(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+          // Requests Feed Title
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              );
-            },
+                const SizedBox(width: 8),
+                Text(
+                  'Requests Feed',
+                  style: GoogleFonts.publicSans(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: t.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              'Discover and accept nearby food donations',
+              style: GoogleFonts.publicSans(
+                fontSize: 13,
+                color: t.textSecondary,
+              ),
+            ),
           ),
 
-          // Search Input Bar
+          // Search Input Bar with explicit outline border
           TextField(
             controller: _searchController,
             onChanged: (val) {
@@ -184,13 +172,13 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                 _searchQuery = val.trim();
               });
             },
-            style: GoogleFonts.publicSans(color: AppColors.textPrimary, fontSize: 14),
+            style: GoogleFonts.publicSans(color: t.textPrimary, fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Search food type, location, or donor...',
-              prefixIcon: const Icon(Icons.search, color: AppColors.outline),
+              prefixIcon: Icon(Icons.search, color: t.outline),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear, color: AppColors.outline, size: 20),
+                      icon: Icon(Icons.clear, color: t.outline, size: 20),
                       onPressed: () {
                         _searchController.clear();
                         setState(() {
@@ -199,24 +187,38 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                       },
                     )
                   : null,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              border: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(color: t.surfaceContainerHighest, width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(color: t.surfaceContainerHighest, width: 1.5),
+              ),
+              focusedBorder: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(color: AppColors.primary, width: 2),
+              ),
+              fillColor: t.background,
+              filled: true,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
           // Horizontal Filter Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                const Icon(Icons.filter_list, size: 18, color: AppColors.outline),
+                Icon(Icons.filter_list, size: 18, color: t.outline),
                 const SizedBox(width: 8),
                 Text(
                   'Filters:',
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+                    color: t.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -257,10 +259,10 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : AppColors.surfaceContainerHigh,
+          color: isSelected ? AppColors.primary : t.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.outlineVariant,
+            color: isSelected ? AppColors.primary : t.outlineVariant,
           ),
         ),
         child: Text(
@@ -268,7 +270,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
           style: GoogleFonts.publicSans(
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? Colors.white : AppColors.textPrimary,
+            color: isSelected ? Colors.white : t.textPrimary,
           ),
         ),
       ),
@@ -291,17 +293,17 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
     return Container(
       margin: const EdgeInsets.only(top: 14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLow,
+        color: t.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: donation.urgency == 'High'
-              ? AppColors.primary.withOpacity(0.5)
-              : AppColors.surfaceContainerHighest,
+              ? t.primary.withValues(alpha: 0.5)
+              : t.surfaceContainerHighest,
           width: donation.urgency == 'High' ? 1.5 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: t.isDark ? 0.4 : 0.08),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -316,6 +318,17 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Food Image
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: donation.images.isNotEmpty
+                      ? donation.images.first.startsWith('http')
+                          ? Image.network(donation.images.first, width: 68, height: 68, fit: BoxFit.cover)
+                          : Image.asset(donation.images.first, width: 68, height: 68, fit: BoxFit.cover)
+                      : Image.asset('assets/images/donation_placeholder.jpg', width: 68, height: 68, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,20 +338,20 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                         style: GoogleFonts.publicSans(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
+                          color: t.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.storefront, size: 14, color: AppColors.outline),
+                          Icon(Icons.storefront, size: 14, color: t.outline),
                           const SizedBox(width: 4),
                           Text(
                             donation.donorName,
                             style: GoogleFonts.publicSans(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.secondary,
+                              color: t.secondary,
                             ),
                           ),
                         ],
@@ -357,7 +370,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                         : const Color(0xFF5D1900),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isVeg ? AppColors.secondary : AppColors.primary,
+                      color: isVeg ? t.secondary : t.primary,
                       width: 1,
                     ),
                   ),
@@ -388,7 +401,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
             ),
 
             const SizedBox(height: 14),
-            const Divider(color: AppColors.surfaceContainerHighest, height: 1),
+            Divider(color: t.surfaceContainerHighest, height: 1),
             const SizedBox(height: 12),
 
             // Middle Grid Details: Quantity, Distance & Servings
@@ -398,7 +411,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                 Expanded(
                   child: Row(
                     children: [
-                      const Icon(Icons.people_outline, size: 18, color: AppColors.tertiary),
+                      Icon(Icons.people_outline, size: 18, color: t.tertiary),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
@@ -406,7 +419,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                           style: GoogleFonts.publicSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: t.textPrimary,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -419,19 +432,19 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceContainerHigh,
+                    color: t.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.near_me, size: 14, color: AppColors.primary),
+                      Icon(Icons.near_me, size: 14, color: t.primary),
                       const SizedBox(width: 4),
                       Text(
                         donation.distance,
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.primaryTint,
+                          color: t.primary,
                         ),
                       ),
                     ],
@@ -445,14 +458,14 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
             // Pickup Location & Timings
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 18, color: AppColors.outline),
+                Icon(Icons.location_on_outlined, size: 18, color: t.outline),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     donation.pickupLocation,
                     style: GoogleFonts.publicSans(
                       fontSize: 13,
-                      color: AppColors.onSurfaceVariant,
+                      color: t.textSecondary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -465,24 +478,24 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
 
             Row(
               children: [
-                const Icon(Icons.access_time, size: 18, color: AppColors.outline),
+                Icon(Icons.access_time, size: 18, color: t.outline),
                 const SizedBox(width: 6),
                 Text(
                   'Pickup: $pickupStr',
                   style: GoogleFonts.publicSans(
                     fontSize: 13,
-                    color: AppColors.onSurfaceVariant,
+                    color: t.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 12),
-                Container(width: 4, height: 4, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.outline)),
+                Container(width: 4, height: 4, decoration: BoxDecoration(shape: BoxShape.circle, color: t.outline)),
                 const SizedBox(width: 12),
                 Text(
                   'Expires: $expiryStr',
                   style: GoogleFonts.publicSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: donation.urgency == 'High' ? AppColors.error : AppColors.tertiary,
+                    color: donation.urgency == 'High' ? t.error : t.tertiary,
                   ),
                 ),
               ],
@@ -497,20 +510,20 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.15),
+                      color: t.error.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.error.withOpacity(0.5)),
+                      border: Border.all(color: t.error.withValues(alpha: 0.5)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.error),
+                        Icon(Icons.warning_amber_rounded, size: 14, color: t.error),
                         const SizedBox(width: 4),
                         Text(
                           'URGENT PICKUP',
                           style: GoogleFonts.inter(
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.error,
+                            color: t.error,
                           ),
                         ),
                       ],
@@ -546,7 +559,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surfaceContainerLow,
+      backgroundColor: t.surfaceContainerLow,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -569,7 +582,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceContainerHighest,
+                        color: t.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -585,7 +598,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                           style: GoogleFonts.publicSans(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
+                            color: t.textPrimary,
                           ),
                         ),
                       ),
@@ -612,63 +625,66 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                     'Offered by ${donation.donorName}',
                     style: GoogleFonts.publicSans(
                       fontSize: 15,
-                      color: AppColors.secondary,
+                      color: t.secondary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 16),
 
-                  // Image Showcase (if images exist)
-                  if (donation.images.isNotEmpty) ...[
-                    SizedBox(
-                      height: 180,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: donation.images.length,
-                        itemBuilder: (context, idx) {
-                          return Container(
-                            width: 260,
-                            margin: const EdgeInsets.only(right: 12),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              image: DecorationImage(
-                                image: NetworkImage(donation.images[idx]),
-                                fit: BoxFit.cover,
-                              ),
+                  // Image Showcase (if images exist, otherwise show default placeholder)
+                  SizedBox(
+                    height: 180,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: donation.images.isNotEmpty ? donation.images.length : 1,
+                      itemBuilder: (context, idx) {
+                        final bool hasImages = donation.images.isNotEmpty;
+                        final String imgPath = hasImages ? donation.images[idx] : 'assets/images/donation_placeholder.jpg';
+
+                        return Container(
+                          width: 260,
+                          margin: const EdgeInsets.only(right: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            image: DecorationImage(
+                              image: hasImages
+                                  ? (imgPath.startsWith('http') ? NetworkImage(imgPath) : AssetImage(imgPath)) as ImageProvider
+                                  : AssetImage(imgPath),
+                              fit: BoxFit.cover,
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 16),
-                  ],
+                  ),
+                  const SizedBox(height: 16),
 
                   // Details Grid Container
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerHigh,
+                      color: t.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.surfaceContainerHighest),
+                      border: Border.all(color: t.surfaceContainerHighest),
                     ),
                     child: Column(
                       children: [
                         _buildDetailRow(Icons.inventory_2_outlined, 'Quantity', donation.quantity),
-                        const Divider(color: AppColors.surfaceContainerHighest, height: 16),
+                        Divider(color: t.surfaceContainerHighest, height: 16),
                         _buildDetailRow(Icons.groups_outlined, 'Servings', '~${donation.servesCount} People'),
-                        const Divider(color: AppColors.surfaceContainerHighest, height: 16),
+                        Divider(color: t.surfaceContainerHighest, height: 16),
                         _buildDetailRow(
                           Icons.location_on_outlined,
                           'Pickup Address',
                           '${donation.pickupLocation} (${donation.distance})',
                         ),
-                        const Divider(color: AppColors.surfaceContainerHighest, height: 16),
+                        Divider(color: t.surfaceContainerHighest, height: 16),
                         _buildDetailRow(
                           Icons.phone_outlined,
                           'Donor Contact',
                           donation.donorPhone.isNotEmpty ? donation.donorPhone : 'Contact visible after accept',
                         ),
-                        const Divider(color: AppColors.surfaceContainerHighest, height: 16),
+                        Divider(color: t.surfaceContainerHighest, height: 16),
                         _buildDetailRow(
                           Icons.schedule_outlined,
                           'Available Pickup',
@@ -676,14 +692,14 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                               ? timeFormat.format(donation.pickupTime!)
                               : 'Immediate Pickup',
                         ),
-                        const Divider(color: AppColors.surfaceContainerHighest, height: 16),
+                        Divider(color: t.surfaceContainerHighest, height: 16),
                         _buildDetailRow(
                           Icons.timer_outlined,
                           'Expiry Time',
                           donation.expiryTime != null
                               ? timeFormat.format(donation.expiryTime!)
                               : 'Within 4 Hours',
-                          valueColor: donation.urgency == 'High' ? AppColors.error : AppColors.tertiary,
+                          valueColor: donation.urgency == 'High' ? t.error : t.tertiary,
                         ),
                       ],
                     ),
@@ -697,7 +713,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                       style: GoogleFonts.publicSans(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -705,15 +721,15 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceContainer,
+                        color: t.surfaceContainer,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.outlineVariant),
+                        border: Border.all(color: t.outlineVariant),
                       ),
                       child: Text(
                         donation.notes,
                         style: GoogleFonts.publicSans(
                           fontSize: 14,
-                          color: AppColors.onSurfaceVariant,
+                          color: t.textSecondary,
                           height: 1.4,
                         ),
                       ),
@@ -741,10 +757,10 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              backgroundColor: AppColors.secondaryContainer,
+                              backgroundColor: t.secondary,
                               content: Row(
                                 children: [
-                                  const Icon(Icons.check_circle, color: AppColors.secondary),
+                                  const Icon(Icons.check_circle, color: Colors.white),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
@@ -782,15 +798,15 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: AppColors.outline),
-        const SizedBox(width: 10),
+        Icon(icon, size: 18, color: t.outline),
+        const SizedBox(width: 12),
         SizedBox(
           width: 110,
           child: Text(
             label,
             style: GoogleFonts.publicSans(
               fontSize: 13,
-              color: AppColors.textSecondary,
+              color: t.textSecondary,
             ),
           ),
         ),
@@ -800,7 +816,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
             style: GoogleFonts.publicSans(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: valueColor ?? AppColors.textPrimary,
+              color: valueColor ?? t.textPrimary,
             ),
           ),
         ),
@@ -822,10 +838,10 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.surfaceContainerHigh,
-                border: Border.all(color: AppColors.outlineVariant),
+                color: t.surfaceContainerHigh,
+                border: Border.all(color: t.outlineVariant),
               ),
-              child: const Icon(Icons.restaurant_outlined, size: 40, color: AppColors.outline),
+              child: Icon(Icons.restaurant_outlined, size: 40, color: t.outline),
             ),
             const SizedBox(height: 16),
             Text(
@@ -833,7 +849,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
               style: GoogleFonts.publicSans(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: t.textPrimary,
               ),
             ),
             const SizedBox(height: 8),
@@ -842,7 +858,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
               textAlign: TextAlign.center,
               style: GoogleFonts.publicSans(
                 fontSize: 14,
-                color: AppColors.textSecondary,
+                color: t.textSecondary,
               ),
             ),
           ],

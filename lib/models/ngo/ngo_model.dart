@@ -8,6 +8,8 @@ class NgoModel {
   final String profileImageUrl;
   final List<String> workingAreas;
   final String verificationStatus; // 'Approved', 'Pending'
+  final double? latitude;
+  final double? longitude;
 
   NgoModel({
     required this.id,
@@ -19,6 +21,8 @@ class NgoModel {
     this.profileImageUrl = '',
     this.workingAreas = const [],
     this.verificationStatus = 'Pending',
+    this.latitude,
+    this.longitude,
   });
 
   factory NgoModel.fromMap(Map<String, dynamic> map, String docId) {
@@ -36,7 +40,6 @@ class NgoModel {
 
     return NgoModel(
       id: docId,
-      // No dummy fallbacks — use only what is stored in Firestore
       name: map['name'] as String? ?? map['organizationName'] as String? ?? '',
       registrationNumber: map['registrationNumber'] as String? ?? '',
       address: map['address'] as String? ?? map['officialAddress'] as String? ?? '',
@@ -46,6 +49,8 @@ class NgoModel {
       workingAreas: areas,
       verificationStatus:
           map['verificationStatus'] as String? ?? map['status'] as String? ?? 'Pending',
+      latitude: map['latitude'] != null ? (map['latitude'] as num).toDouble() : null,
+      longitude: map['longitude'] != null ? (map['longitude'] as num).toDouble() : null,
     );
   }
 
@@ -60,6 +65,8 @@ class NgoModel {
       'profileImageUrl': profileImageUrl,
       'workingAreas': workingAreas,
       'verificationStatus': verificationStatus,
+      'latitude': latitude,
+      'longitude': longitude,
       'updatedAt': DateTime.now().toIso8601String(),
     };
   }
@@ -73,6 +80,8 @@ class NgoModel {
     String? profileImageUrl,
     List<String>? workingAreas,
     String? verificationStatus,
+    double? latitude,
+    double? longitude,
   }) {
     return NgoModel(
       id: id,
@@ -84,6 +93,8 @@ class NgoModel {
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       workingAreas: workingAreas ?? this.workingAreas,
       verificationStatus: verificationStatus ?? this.verificationStatus,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }

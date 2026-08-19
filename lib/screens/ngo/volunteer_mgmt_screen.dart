@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../models/ngo/volunteer_model.dart';
 import '../../services/firestore_service.dart';
@@ -15,6 +18,8 @@ class VolunteerMgmtScreen extends StatefulWidget {
 
 class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
     with SingleTickerProviderStateMixin {
+  NgoTheme get t => NgoTheme.of(context);
+
   final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
 
@@ -35,24 +40,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(48),
-        child: Container(
-          color: AppColors.surfaceContainerLow,
-          child: TabBar(
-            controller: _tabController,
-            indicatorColor: AppColors.primary,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.textSecondary,
-            labelStyle: GoogleFonts.publicSans(fontWeight: FontWeight.w700, fontSize: 13),
-            tabs: const [
-              Tab(text: 'VOLUNTEER TEAM'),
-              Tab(text: 'ASSIGN PICKUPS'),
-            ],
-          ),
-        ),
-      ),
+      backgroundColor: t.background,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddVolunteerDialog,
         backgroundColor: AppColors.primary,
@@ -63,17 +51,387 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
           style: GoogleFonts.publicSans(fontWeight: FontWeight.w700),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Sub-Tab 1: Registered Volunteers List
-          _buildVolunteerListSection(),
+          // Community Title / Heading
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Community',
+                  style: GoogleFonts.publicSans(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: t.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Manage your volunteers and assign food pickups',
+              style: GoogleFonts.publicSans(
+                fontSize: 13,
+                color: t.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
 
-          // Sub-Tab 2: Accepted Donations Needing Volunteer Assignment
-          _buildAssignmentSection(),
+          // Tab Bar Container
+          Container(
+            color: t.surfaceContainerLow,
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: AppColors.primary,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: t.textSecondary,
+              labelStyle: GoogleFonts.publicSans(fontWeight: FontWeight.w700, fontSize: 13),
+              tabs: const [
+                Tab(text: 'VOLUNTEER TEAM'),
+                Tab(text: 'ASSIGN PICKUPS'),
+              ],
+            ),
+          ),
+
+          // Tab Bar View
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Sub-Tab 1: Registered Volunteers List
+                _buildVolunteerListSection(),
+
+                // Sub-Tab 2: Accepted Donations Needing Volunteer Assignment
+                _buildAssignmentSection(),
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  // Helper Methods for active pickup status actions
+
+  Future<void> _resetVolunteerStatus(VolunteerModel vol, {DonationModel? donation}) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      // Update volunteer doc: set status to Available, delete assignedDonationId
+      await db.collection('volunteers').doc(vol.id).update({
+        'status': 'Available',
+        'assignedDonationId': FieldValue.delete(),
+      });
+
+      // If the donation status is not 'Delivered' and is currently assigned to this volunteer, reset it back to 'Accepted'
+      if (donation != null && donation.status != 'Delivered' && donation.assignedVolunteerId == vol.id) {
+        await db.collection('donations').doc(donation.id).update({
+          'status': 'Accepted',
+          'assignedVolunteerId': FieldValue.delete(),
+          'assignedVolunteerName': FieldValue.delete(),
+          'assignedVolunteerPhone': FieldValue.delete(),
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.secondaryContainer,
+            content: Text(
+              'Volunteer ${vol.name} marked as Available!',
+              style: GoogleFonts.publicSans(color: Colors.white),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.error,
+            content: Text('Failed to update volunteer status: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateVolunteerPickupStatus(DonationModel donation, String newStatus) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      // 1. Update Donation Status
+      await db.collection('donations').doc(donation.id).update({
+        'status': newStatus,
+      });
+
+      // 2. Add notification for donor
+      if (donation.donorId.isNotEmpty) {
+        await db.collection('notifications').add({
+          'userId': donation.donorId,
+          'donationId': donation.id,
+          'title': newStatus == 'Picked Up' ? 'Food Picked Up' : 'Food Delivered',
+          'body': newStatus == 'Picked Up'
+              ? 'Your food donation is on its way to the NGO!'
+              : 'Thank you! Your donation has been successfully delivered.',
+          'status': newStatus,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.secondaryContainer,
+            content: Text(
+              'Pickup status marked as $newStatus!',
+              style: GoogleFonts.publicSans(color: Colors.white),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.error,
+            content: Text('Failed to update status: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showMgmtDistributionDialog(VolunteerModel vol, DonationModel donation) {
+    final foodCtrl = TextEditingController(text: donation.quantity);
+    final beneficiariesCtrl = TextEditingController(
+      text: donation.servesCount > 0 ? donation.servesCount.toString() : '',
+    );
+    final locationCtrl = TextEditingController(text: donation.pickupLocation);
+
+    DateTime selectedDate = DateTime.now();
+    final dateCtrl = TextEditingController(
+      text: DateFormat('yyyy-MM-dd').format(selectedDate),
+    );
+
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: t.surfaceContainerLow,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(
+                'Record Food Distribution',
+                style: GoogleFonts.publicSans(
+                  fontWeight: FontWeight.w700,
+                  color: t.textPrimary,
+                ),
+              ),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Please record the distribution details to complete this delivery.',
+                        style: GoogleFonts.publicSans(
+                          fontSize: 13,
+                          color: t.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Food Delivered (quantity)
+                      TextFormField(
+                        controller: foodCtrl,
+                        style: GoogleFonts.publicSans(color: t.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: 'Food Delivered (Quantity) *',
+                          prefixIcon: Icon(Icons.scale_outlined, size: 20),
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty ? 'Enter food quantity' : null,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Number of Beneficiaries Served
+                      TextFormField(
+                        controller: beneficiariesCtrl,
+                        keyboardType: TextInputType.number,
+                        style: GoogleFonts.publicSans(color: t.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: 'Number of Beneficiaries Served *',
+                          prefixIcon: Icon(Icons.people_outline, size: 20),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Enter number of beneficiaries';
+                          if (int.tryParse(v.trim()) == null) return 'Enter a valid integer';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Delivery Location
+                      TextFormField(
+                        controller: locationCtrl,
+                        style: GoogleFonts.publicSans(color: t.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: 'Delivery Location *',
+                          prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty ? 'Enter delivery location' : null,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Delivery Date
+                      TextFormField(
+                        controller: dateCtrl,
+                        readOnly: true,
+                        style: GoogleFonts.publicSans(color: t.textPrimary),
+                        decoration: InputDecoration(
+                          labelText: 'Delivery Date *',
+                          prefixIcon: const Icon(Icons.calendar_today_outlined, size: 20),
+                          suffixIcon: IconButton(
+                            icon: Icon(Icons.date_range, color: t.primary),
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  selectedDate = picked;
+                                  dateCtrl.text = DateFormat('yyyy-MM-dd').format(selectedDate);
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.publicSans(color: t.textSecondary),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: t.secondary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(120, 42),
+                  ),
+                  onPressed: () async {
+                    if (formKey.currentState!.validate()) {
+                      final foodQty = foodCtrl.text.trim();
+                      final beneficiaries = int.parse(beneficiariesCtrl.text.trim());
+                      final delLocation = locationCtrl.text.trim();
+                      
+                      Navigator.pop(dialogCtx);
+                      
+                      await _completeVolunteerDelivery(
+                        vol: vol,
+                        donation: donation,
+                        foodDelivered: foodQty,
+                        beneficiariesServed: beneficiaries,
+                        deliveryLocation: delLocation,
+                        deliveryDate: selectedDate,
+                      );
+                    }
+                  },
+                  child: const Text('Complete'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _completeVolunteerDelivery({
+    required VolunteerModel vol,
+    required DonationModel donation,
+    required String foodDelivered,
+    required int beneficiariesServed,
+    required String deliveryLocation,
+    required DateTime deliveryDate,
+  }) async {
+    try {
+      final db = FirebaseFirestore.instance;
+
+      // 1. Update Donation Status & details
+      await db.collection('donations').doc(donation.id).update({
+        'status': 'Delivered',
+        'foodDelivered': foodDelivered,
+        'beneficiariesServed': beneficiariesServed,
+        'deliveryLocation': deliveryLocation,
+        'deliveredAt': deliveryDate.toIso8601String(),
+      });
+
+      // 2. Free volunteer
+      await db.collection('volunteers').doc(vol.id).update({
+        'status': 'Available',
+        'assignedDonationId': FieldValue.delete(),
+      });
+
+      // 3. Notify Donor
+      if (donation.donorId.isNotEmpty) {
+        await db.collection('notifications').add({
+          'userId': donation.donorId,
+          'donationId': donation.id,
+          'title': 'Food Delivered',
+          'body': 'Thank you! Your donation has been successfully delivered.',
+          'status': 'Delivered',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.secondaryContainer,
+            content: Text(
+              'Delivery recorded & volunteer marked as Available!',
+              style: GoogleFonts.publicSans(color: Colors.white),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.error,
+            content: Text('Failed to complete delivery: $e'),
+          ),
+        );
+      }
+    }
   }
 
   // ─── SUB-TAB 1: VOLUNTEER LIST SECTION ───────────────────────────────────
@@ -95,20 +453,20 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.group_outlined, size: 48, color: AppColors.outline),
+                Icon(Icons.group_outlined, size: 48, color: t.outline),
                 const SizedBox(height: 12),
                 Text(
                   'No Volunteers Registered Yet',
                   style: GoogleFonts.publicSans(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: t.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Tap the "+ Register Volunteer" button below to add your first member.',
-                  style: GoogleFonts.publicSans(color: AppColors.textSecondary, fontSize: 13),
+                  style: GoogleFonts.publicSans(color: t.textSecondary, fontSize: 13),
                 ),
               ],
             ),
@@ -124,105 +482,218 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
-              color: AppColors.surfaceContainerLow,
+              color: t.surfaceContainerLow,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
-                side: const BorderSide(color: AppColors.surfaceContainerHighest),
+                side: BorderSide(color: t.surfaceContainerHighest),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Volunteer Avatar
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: isAvailable
-                          ? AppColors.secondaryContainer
-                          : AppColors.primaryContainer,
-                      child: Text(
-                        vol.name.isNotEmpty ? vol.name[0].toUpperCase() : 'V',
-                        style: GoogleFonts.publicSans(
-                          fontWeight: FontWeight.w800,
-                          color: isAvailable ? AppColors.secondary : Colors.white,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-
-                    // Details
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            vol.name,
+                    Row(
+                      children: [
+                        // Volunteer Avatar
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: isAvailable
+                              ? t.secondary.withValues(alpha: 0.15)
+                              : t.primary.withValues(alpha: 0.15),
+                          child: Text(
+                            vol.name.isNotEmpty ? vol.name[0].toUpperCase() : 'V',
                             style: GoogleFonts.publicSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w800,
+                              color: isAvailable ? t.secondary : t.primary,
+                              fontSize: 18,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Row(
+                        ),
+                        const SizedBox(width: 14),
+
+                        // Details
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.phone_outlined, size: 14, color: AppColors.outline),
-                              const SizedBox(width: 4),
                               Text(
-                                vol.phone,
+                                vol.name,
                                 style: GoogleFonts.publicSans(
-                                  fontSize: 13,
-                                  color: AppColors.onSurfaceVariant,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: t.textPrimary,
                                 ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.phone_outlined, size: 14, color: t.outline),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    vol.phone,
+                                    style: GoogleFonts.publicSans(
+                                      fontSize: 13,
+                                      color: t.textSecondary,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                          if (vol.assignedDonationId != null &&
-                              vol.assignedDonationId!.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Icon(Icons.inventory_2_outlined, size: 14, color: AppColors.tertiary),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    'Pickup ID: ${vol.assignedDonationId}',
-                                    style: GoogleFonts.publicSans(
-                                      fontSize: 12,
-                                      color: AppColors.tertiary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
+                        ),
+
+                        // Status Chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isAvailable
+                                ? t.secondary.withValues(alpha: 0.12)
+                                : t.tertiary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isAvailable ? t.secondary : t.tertiary,
                             ),
-                          ],
-                        ],
-                      ),
+                          ),
+                          child: Text(
+                            isAvailable ? 'Available' : 'On Delivery',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isAvailable ? t.secondary : t.tertiary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
-                    // Status Chip
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isAvailable
-                            ? const Color(0xFF1D514F)
-                            : const Color(0xFFC49100).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isAvailable ? AppColors.secondary : AppColors.tertiary,
-                        ),
+                    if (!isAvailable && vol.assignedDonationId != null && vol.assignedDonationId!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Divider(color: t.surfaceContainerHighest, height: 1),
+                      const SizedBox(height: 12),
+                      StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance.collection('donations').doc(vol.assignedDonationId).snapshots(),
+                        builder: (context, donationSnap) {
+                          if (!donationSnap.hasData || !donationSnap.data!.exists) {
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'No active donation record found',
+                                  style: GoogleFonts.publicSans(fontSize: 12, color: t.textSecondary, fontStyle: FontStyle.italic),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton.icon(
+                                  onPressed: () => _resetVolunteerStatus(vol),
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Reset Available'),
+                                ),
+                              ],
+                            );
+                          }
+
+                          final donationData = donationSnap.data!.data() as Map<String, dynamic>;
+                          final donation = DonationModel.fromMap(donationData, donationSnap.data!.id);
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.inventory_2_outlined, size: 16, color: t.tertiary),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Food: ${donation.foodTitle}',
+                                      style: GoogleFonts.publicSans(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: t.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: t.surfaceContainerHigh,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      donation.status.toUpperCase(),
+                                      style: GoogleFonts.inter(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: t.secondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on_outlined, size: 16, color: t.outline),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Pickup: ${donation.pickupLocation}',
+                                      style: GoogleFonts.publicSans(
+                                        fontSize: 12,
+                                        color: t.textSecondary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  if (donation.status == 'Volunteer Assigned') ...[
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: t.secondary,
+                                        foregroundColor: Colors.white,
+                                        minimumSize: const Size(120, 36),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      ),
+                                      onPressed: () => _updateVolunteerPickupStatus(donation, 'Picked Up'),
+                                      icon: const Icon(Icons.local_shipping_outlined, size: 16),
+                                      label: const Text('Mark Picked Up'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ] else if (donation.status == 'Picked Up') ...[
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: t.primary,
+                                        foregroundColor: Colors.white,
+                                        minimumSize: const Size(120, 36),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      ),
+                                      onPressed: () => _showMgmtDistributionDialog(vol, donation),
+                                      icon: const Icon(Icons.done_all, size: 16),
+                                      label: const Text('Complete Delivery'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      side: BorderSide(color: t.primary, width: 1),
+                                      foregroundColor: t.primary,
+                                      minimumSize: const Size(100, 36),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    ),
+                                    onPressed: () => _resetVolunteerStatus(vol, donation: donation),
+                                    icon: const Icon(Icons.undo, size: 14),
+                                    label: const Text('Free Volunteer'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
                       ),
-                      child: Text(
-                        isAvailable ? 'Available' : 'On Delivery',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: isAvailable ? AppColors.secondary : AppColors.tertiary,
-                        ),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -254,21 +725,21 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.task_alt_outlined, size: 48, color: AppColors.outline),
+                  Icon(Icons.task_alt_outlined, size: 48, color: t.outline),
                   const SizedBox(height: 12),
                   Text(
                     'No Pending Volunteer Assignments',
                     style: GoogleFonts.publicSans(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: t.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Accept new food requests in the Feed tab to assign volunteers here.',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.publicSans(color: AppColors.textSecondary, fontSize: 13),
+                    style: GoogleFonts.publicSans(color: t.textSecondary, fontSize: 13),
                   ),
                 ],
               ),
@@ -284,10 +755,10 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
             return Card(
               margin: const EdgeInsets.only(bottom: 14),
-              color: AppColors.surfaceContainerLow,
+              color: t.surfaceContainerLow,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
-                side: const BorderSide(color: AppColors.surfaceContainerHighest),
+                side: BorderSide(color: t.surfaceContainerHighest),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -302,14 +773,14 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                             style: GoogleFonts.publicSans(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
+                              color: t.textPrimary,
                             ),
                           ),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppColors.secondaryContainer,
+                            color: t.secondary.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -317,7 +788,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.secondary,
+                              color: t.secondary,
                             ),
                           ),
                         ),
@@ -327,13 +798,13 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
                     Row(
                       children: [
-                        const Icon(Icons.storefront_outlined, size: 16, color: AppColors.outline),
+                        Icon(Icons.storefront_outlined, size: 16, color: t.outline),
                         const SizedBox(width: 6),
                         Text(
                           'Donor: ${donation.donorName}',
                           style: GoogleFonts.publicSans(
                             fontSize: 13,
-                            color: AppColors.textSecondary,
+                            color: t.textSecondary,
                           ),
                         ),
                       ],
@@ -342,14 +813,14 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
                     Row(
                       children: [
-                        const Icon(Icons.location_on_outlined, size: 16, color: AppColors.outline),
+                        Icon(Icons.location_on_outlined, size: 16, color: t.outline),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             donation.pickupLocation,
                             style: GoogleFonts.publicSans(
                               fontSize: 13,
-                              color: AppColors.onSurfaceVariant,
+                              color: t.textSecondary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -359,7 +830,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                     ),
 
                     const SizedBox(height: 14),
-                    const Divider(color: AppColors.surfaceContainerHighest, height: 1),
+                    Divider(color: t.surfaceContainerHighest, height: 1),
                     const SizedBox(height: 12),
 
                     SizedBox(
@@ -397,13 +868,13 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: AppColors.surfaceContainerLow,
+          backgroundColor: t.surfaceContainerLow,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
             'Register New Volunteer',
             style: GoogleFonts.publicSans(
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: t.textPrimary,
             ),
           ),
           content: Form(
@@ -414,7 +885,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                 children: [
                   TextFormField(
                     controller: nameCtrl,
-                    style: GoogleFonts.publicSans(color: AppColors.textPrimary),
+                    style: GoogleFonts.publicSans(color: t.textPrimary),
                     decoration: const InputDecoration(
                       labelText: 'Volunteer Full Name *',
                       prefixIcon: Icon(Icons.person_outline, size: 20),
@@ -425,7 +896,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                   TextFormField(
                     controller: phoneCtrl,
                     keyboardType: TextInputType.phone,
-                    style: GoogleFonts.publicSans(color: AppColors.textPrimary),
+                    style: GoogleFonts.publicSans(color: t.textPrimary),
                     decoration: const InputDecoration(
                       labelText: 'Contact Phone Number *',
                       prefixIcon: Icon(Icons.phone_outlined, size: 20),
@@ -436,7 +907,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                   TextFormField(
                     controller: emailCtrl,
                     keyboardType: TextInputType.emailAddress,
-                    style: GoogleFonts.publicSans(color: AppColors.textPrimary),
+                    style: GoogleFonts.publicSans(color: t.textPrimary),
                     decoration: const InputDecoration(
                       labelText: 'Email Address (Optional)',
                       prefixIcon: Icon(Icons.email_outlined, size: 20),
@@ -445,7 +916,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: areaCtrl,
-                    style: GoogleFonts.publicSans(color: AppColors.textPrimary),
+                    style: GoogleFonts.publicSans(color: t.textPrimary),
                     decoration: const InputDecoration(
                       labelText: 'Working Area / Zone',
                       prefixIcon: Icon(Icons.map_outlined, size: 20),
@@ -460,7 +931,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'Cancel',
-                style: GoogleFonts.publicSans(color: AppColors.textSecondary),
+                style: GoogleFonts.publicSans(color: t.textSecondary),
               ),
             ),
             ElevatedButton(
@@ -506,7 +977,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
   void _openAssignVolunteerModal(DonationModel donation) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surfaceContainerLow,
+      backgroundColor: t.surfaceContainerLow,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -530,13 +1001,13 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                     style: GoogleFonts.publicSans(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: t.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Food: ${donation.foodTitle} (${donation.pickupLocation})',
-                    style: GoogleFonts.publicSans(fontSize: 13, color: AppColors.secondary),
+                    style: GoogleFonts.publicSans(fontSize: 13, color: t.secondary),
                   ),
                   const SizedBox(height: 16),
 
@@ -544,17 +1015,17 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceContainerHigh,
+                        color: t.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, color: AppColors.tertiary),
+                          Icon(Icons.info_outline, color: t.tertiary),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'No available volunteers right now. Please register a volunteer first or wait for active deliveries to complete.',
-                              style: GoogleFonts.publicSans(fontSize: 13, color: AppColors.textPrimary),
+                              style: GoogleFonts.publicSans(fontSize: 13, color: t.textPrimary),
                             ),
                           ),
                         ],
@@ -567,7 +1038,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
+                        color: t.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -580,7 +1051,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                           final vol = availableVolunteers[index];
 
                           return Card(
-                            color: AppColors.surfaceContainerHigh,
+                            color: t.surfaceContainerHigh,
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
                               leading: const CircleAvatar(
@@ -591,12 +1062,12 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                                 vol.name,
                                 style: GoogleFonts.publicSans(
                                   fontWeight: FontWeight.w700,
-                                  color: AppColors.textPrimary,
+                                  color: t.textPrimary,
                                 ),
                               ),
                               subtitle: Text(
                                 '${vol.phone} • Area: ${vol.workingArea}',
-                                style: GoogleFonts.publicSans(fontSize: 12, color: AppColors.outline),
+                                style: GoogleFonts.publicSans(fontSize: 12, color: t.outline),
                               ),
                               trailing: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -616,7 +1087,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                                     Navigator.pop(context);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        backgroundColor: AppColors.secondaryContainer,
+                                        backgroundColor: t.secondary,
                                         content: Text(
                                           'Assigned ${vol.name} to pickup! Donation status updated to "Volunteer Assigned".',
                                           style: GoogleFonts.publicSans(color: Colors.white),

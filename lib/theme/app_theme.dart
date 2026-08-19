@@ -6,31 +6,31 @@ class AppTheme {
   // ----------------- Light Theme -----------------
   static final ThemeData lightTheme = ThemeData(
     brightness: Brightness.light,
-    scaffoldBackgroundColor: AppColors.background,
-    canvasColor: AppColors.background,
-    cardColor: AppColors.surface,
+    scaffoldBackgroundColor: AppColors.lightBackground,
+    canvasColor: AppColors.lightBackground,
+    cardColor: AppColors.lightSurface,
+
     primaryColor: AppColors.primary,
     colorScheme: const ColorScheme.light(
       primary: AppColors.primary,
+      background: AppColors.lightBackground,
+      surface: AppColors.lightSurface,
+      surfaceContainerLow: AppColors.surfaceContainerLow,
+      surfaceContainerHighest: AppColors.surfaceContainerHighest,
+      onPrimary: AppColors.onPrimary,
+      onBackground: AppColors.onBackground,
+      onSurface: AppColors.onSurface,
       secondary: AppColors.secondary,
       tertiary: AppColors.tertiary,
-      surface: AppColors.surface,
       error: AppColors.error,
-      onPrimary: AppColors.onPrimary,
-      onSurface: AppColors.textPrimary,
-      onError: Colors.white,
+      outline: AppColors.outline,
+      outlineVariant: AppColors.outlineVariant,
     ),
     textTheme: GoogleFonts.interTextTheme(),
     appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.primary,
+      foregroundColor: Colors.white,
       elevation: 0,
-      foregroundColor: AppColors.textPrimary,
-      iconTheme: IconThemeData(color: AppColors.textPrimary),
-      titleTextStyle: TextStyle(
-        color: AppColors.textPrimary,
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-      ),
     ),
     cardTheme: const CardThemeData(
       shape: RoundedRectangleBorder(
@@ -55,7 +55,10 @@ class AppTheme {
       ),
       hintStyle: TextStyle(color: AppColors.textHint),
     ),
-    dividerColor: AppColors.outlineVariant,
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: AppColors.surfaceContainerLow,
+    ),
+    dividerColor: AppColors.surfaceContainerHighest,
     iconTheme: const IconThemeData(color: AppColors.textSecondary),
   );
 
@@ -65,28 +68,26 @@ class AppTheme {
     scaffoldBackgroundColor: AppColors.darkBackground,
     canvasColor: AppColors.darkBackground,
     cardColor: AppColors.darkCardColor,
-    primaryColor: AppColors.primary,
+    primaryColor: AppColors.darkPrimary,
     colorScheme: const ColorScheme.dark(
       primary: AppColors.primary,
       secondary: AppColors.darkSecondary,
       tertiary: AppColors.darkTertiary,
       surface: AppColors.darkSurface,
-      error: AppColors.darkError,
+      surfaceContainerLow: AppColors.darkSurfaceContainerLow,
+      surfaceContainerHighest: AppColors.darkSurfaceContainerHighest,
       onPrimary: Colors.white,
+      onBackground: AppColors.darkTextPrimary,
       onSurface: AppColors.darkTextPrimary,
-      onError: Colors.black,
+      error: AppColors.darkError,
+      outline: AppColors.darkTextHint,
+      outlineVariant: AppColors.darkSurfaceContainerHighest,
     ),
     textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
     appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.darkBackground,
-      elevation: 0,
+      backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,
-      iconTheme: IconThemeData(color: Colors.white),
-      titleTextStyle: TextStyle(
-        color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-      ),
+      elevation: 0,
     ),
     cardTheme: const CardThemeData(
       color: AppColors.darkCardColor,
@@ -98,19 +99,24 @@ class AppTheme {
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.darkPrimary,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     ),
-    inputDecorationTheme: const InputDecorationTheme(
+    inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.darkSurfaceContainerLow,
-      border: OutlineInputBorder(
+      border: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(12)),
         borderSide: BorderSide.none,
       ),
       hintStyle: TextStyle(color: AppColors.darkTextHint),
+    ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: AppColors.darkSurfaceContainerLow,
     ),
     dividerColor: AppColors.darkSurfaceContainerHighest,
     iconTheme: const IconThemeData(color: AppColors.darkTextSecondary),

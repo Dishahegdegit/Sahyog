@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../models/admin/ngo_approval_item.dart';
+import '../../services/location_service.dart';
 
 // ─────────────────────────────────────────────
 //  Line Chart Painter
@@ -582,7 +583,7 @@ class _NgoCard extends StatelessWidget {
           // Details
           if (item.address.isNotEmpty)
             _DetailRow(
-                icon: Icons.location_on_outlined, text: item.address),
+                icon: Icons.location_on_outlined, text: LocationService.cleanAddress(item.address, fallbackName: 'Official NGO Address')),
           if (item.email.isNotEmpty)
             _DetailRow(icon: Icons.email_outlined, text: item.email),
           if (item.phone.isNotEmpty)
