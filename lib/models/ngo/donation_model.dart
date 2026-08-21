@@ -17,6 +17,7 @@ class DonationModel {
   final String notes;
   final List<String> images;
   final String status; // 'Available', 'Accepted', 'Volunteer Assigned', 'Picked Up', 'Delivered'
+  final String? requestedNgoId;
   final String? acceptedByNgoId;
   final String? acceptedByNgoName;
   final DateTime? acceptedAt;
@@ -46,6 +47,7 @@ class DonationModel {
     this.notes = '',
     this.images = const [],
     this.status = 'Available',
+    this.requestedNgoId,
     this.acceptedByNgoId,
     this.acceptedByNgoName,
     this.acceptedAt,
@@ -66,25 +68,45 @@ class DonationModel {
       return null;
     }
 
+    final imageList = <String>[];
+    if (map['images'] != null) {
+      imageList.addAll(List<String>.from(map['images'] as List));
+    } else {
+      final single = (map['imageUrl'] as String?)?.trim() ?? '';
+      if (single.isNotEmpty) imageList.add(single);
+    }
+
     return DonationModel(
       id: docId,
       donorId: map['donorId'] as String? ?? '',
       donorName: map['donorName'] as String? ?? '',
       donorPhone: map['donorPhone'] as String? ?? '',
-      foodTitle: map['foodTitle'] as String? ?? map['foodName'] as String? ?? '',
+      foodTitle: map['foodTitle'] as String? ??
+          map['foodName'] as String? ??
+          map['foodType'] as String? ??
+          'Food Donation',
       foodType: map['foodType'] as String? ?? 'Veg',
-      quantity: map['quantity'] as String? ?? '',
+      quantity: map['quantity'] as String? ?? map['foodQuantity'] as String? ?? '',
       servesCount: map['servesCount'] is int
           ? map['servesCount'] as int
-          : int.tryParse(map['servesCount']?.toString() ?? '0') ?? 0,
-      pickupLocation: map['pickupLocation'] as String? ?? map['address'] as String? ?? '',
+          : map['servings'] is int
+              ? map['servings'] as int
+              : int.tryParse(map['servesCount']?.toString() ?? map['servings']?.toString() ?? '0') ?? 0,
+      pickupLocation: map['pickupLocation'] as String? ??
+          map['pickupAddress'] as String? ??
+          map['address'] as String? ??
+          '',
       distance: map['distance'] as String? ?? '',
       pickupTime: parseDate(map['pickupTime']),
       expiryTime: parseDate(map['expiryTime']),
       urgency: map['urgency'] as String? ?? 'Medium',
       notes: map['notes'] as String? ?? map['description'] as String? ?? '',
-      images: map['images'] != null ? List<String>.from(map['images'] as List) : [],
+      images: imageList,
       status: map['status'] as String? ?? 'Available',
+      requestedNgoId: () {
+        final raw = (map['requestedNgoId'] ?? map['ngoId'])?.toString().trim() ?? '';
+        return raw.isEmpty ? null : raw;
+      }(),
       acceptedByNgoId: map['acceptedByNgoId'] as String?,
       acceptedByNgoName: map['acceptedByNgoName'] as String?,
       acceptedAt: parseDate(map['acceptedAt']),
@@ -162,6 +184,7 @@ class DonationModel {
       notes: notes,
       images: images,
       status: status ?? this.status,
+      requestedNgoId: requestedNgoId,
       acceptedByNgoId: acceptedByNgoId ?? this.acceptedByNgoId,
       acceptedByNgoName: acceptedByNgoName ?? this.acceptedByNgoName,
       acceptedAt: acceptedAt ?? this.acceptedAt,

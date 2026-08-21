@@ -318,10 +318,18 @@ class _NgoProfileScreenState extends ConsumerState<NgoProfileScreen> {
 
     // Also persist lat/lng
     if (_currentNgoId.isNotEmpty && _lat != null && _lng != null) {
-      await FirebaseFirestore.instance.collection('ngos').doc(_currentNgoId).set({
+      final coords = {
         'latitude': _lat,
         'longitude': _lng,
-      }, SetOptions(merge: true));
+      };
+      await FirebaseFirestore.instance.collection('ngos').doc(_currentNgoId).set(
+        coords,
+        SetOptions(merge: true),
+      );
+      await FirebaseFirestore.instance.collection('users').doc(_currentNgoId).set(
+        coords,
+        SetOptions(merge: true),
+      );
     }
 
     setState(() {

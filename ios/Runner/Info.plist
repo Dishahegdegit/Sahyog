@@ -66,5 +66,17 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Sahyog needs camera access so you can take a fresh photo of the food you want to donate.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Sahyog needs photo library access so you can choose an existing food photo for your donation.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Sahyog may save donation photos to your library if needed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sahyog may use the microphone when capturing photos with some camera modes.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Sahyog needs your location to set accurate pickup and NGO drop-off pins on the map.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Sahyog needs your location to set accurate pickup and NGO drop-off pins on the map.</string>
 </dict>
 </plist>

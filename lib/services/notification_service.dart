@@ -1,7 +1,11 @@
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -9,28 +13,20 @@ class NotificationService {
   NotificationService._internal();
 
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
 
   Future<void> initialize() async {
-    // 1. Request permissions
-    await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    await _fcm.requestPermission(alert: true, badge: true, sound: true);
+
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _localNotifications.initialize(
+      const InitializationSettings(android: androidInit),
     );
 
-    // 2. Initialize Local Notifications
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-
-    await _localNotifications.initialize(initializationSettings);
-
-    // 3. Setup Foreground Notification Channel (High Importance for Pop-up)
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    const channel = AndroidNotificationChannel(
       'sahyog_notifications',
       'Sahyog Platform Alerts',
       description: 'Main notification channel for Sahyog updates',
@@ -40,53 +36,72 @@ class NotificationService {
     );
 
     await _localNotifications
-        .resolvePlatformSpecificPlugin<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // 4. Handle Foreground Messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      _showLocalNotification(message);
-    });
-
-    // 5. Setup Firestore Real-time Listener (Fallback for real-time in-app alerts)
-    _setupFirestoreListener();
+    FirebaseMessaging.onMessage.listen(_showLocalNotification);
+    await bindCurrentUser();
   }
 
-  void _setupFirestoreListener() {
+  Future<void> bindCurrentUser() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // Listen for new notifications for THIS user added in the last 10 seconds
+    try {
+      final token = await _fcm.getToken();
+      if (token != null && token.isNotEmpty) {
+        await _saveToken(user.uid, token);
+      }
+      _fcm.onTokenRefresh.listen((t) => _saveToken(user.uid, t));
+    } catch (e) {
+      debugPrint('FCM token save skipped: $e');
+    }
+
+    _setupFirestoreListener(user.uid);
+  }
+
+  Future<void> _saveToken(String uid, String token) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'fcmToken': token,
+      'fcmUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  void _setupFirestoreListener(String uid) {
     FirebaseFirestore.instance
         .collection('notifications')
-        .where('recipientId', isEqualTo: user.uid)
-        .where('createdAt', isGreaterThan: Timestamp.now()) // Only new ones
+        .where('recipientId', isEqualTo: uid)
         .snapshots()
         .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
-        if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data() as Map<String, dynamic>;
-          _showCustomNotification(
-            data['title'] ?? 'Sahyog Update',
-            data['body'] ?? '',
-          );
+      for (final change in snapshot.docChanges) {
+        if (change.type != DocumentChangeType.added) continue;
+        final data = change.doc.data();
+        if (data == null) continue;
+        final created = data['createdAt'];
+        if (created is Timestamp) {
+          final age = DateTime.now().difference(created.toDate());
+          if (age.inSeconds > 20) continue;
         }
+        _showCustomNotification(
+          data['title']?.toString() ?? 'Sahyog Update',
+          data['body']?.toString() ?? '',
+        );
       }
     });
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    RemoteNotification? notification = message.notification;
-    AndroidNotification? android = message.notification?.android;
-
-    if (notification != null && android != null) {
-      _showCustomNotification(notification.title ?? '', notification.body ?? '');
-    }
+    final notification = message.notification;
+    if (notification == null) return;
+    await _showCustomNotification(
+      notification.title ?? 'Sahyog',
+      notification.body ?? '',
+    );
   }
 
   Future<void> _showCustomNotification(String title, String body) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
+    const android = AndroidNotificationDetails(
       'sahyog_notifications',
       'Sahyog Platform Alerts',
       importance: Importance.max,
@@ -94,15 +109,11 @@ class NotificationService {
       playSound: true,
       enableVibration: true,
     );
-    
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
-
     await _localNotifications.show(
-      DateTime.now().millisecond,
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,
-      platformChannelSpecifics,
+      const NotificationDetails(android: android),
     );
   }
 }

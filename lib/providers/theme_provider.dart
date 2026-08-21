@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/theme_notifier.dart';
+
 /// Riverpod provider for app-wide ThemeMode (light / dark).
-/// Used by the NGO module's dark mode toggle button.
 final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>(
   (ref) => ThemeModeNotifier(),
 );
 
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
-  ThemeModeNotifier() : super(ThemeMode.light);
-
-  void toggleTheme() {
-    state = state == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
-  }
+  ThemeModeNotifier() : super(themeNotifier.value);
 
   bool get isDark => state == ThemeMode.dark;
+
+  void toggleTheme() {
+    setDark(state != ThemeMode.dark);
+  }
+
+  void setDark(bool isDark) {
+    state = isDark ? ThemeMode.dark : ThemeMode.light;
+    themeNotifier.value = state;
+    saveThemePreference(isDark);
+  }
 }

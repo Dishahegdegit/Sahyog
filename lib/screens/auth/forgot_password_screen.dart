@@ -85,7 +85,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               width: 90,
               height: 90,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: const Icon(
@@ -186,7 +186,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           width: 110,
           height: 110,
           decoration: BoxDecoration(
-            color: AppColors.secondary.withOpacity(0.15),
+            color: AppColors.secondary.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(30),
             border: Border.all(color: AppColors.secondary, width: 1.5),
           ),

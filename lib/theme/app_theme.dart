@@ -148,6 +148,7 @@ class AppColorSet {
   Color get textSecondary => isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
   Color get textHint => isDark ? AppColors.darkTextHint : AppColors.textHint;
   Color get outlineVariant => isDark ? AppColors.darkSurfaceContainerHighest : AppColors.outlineVariant;
+  Color get borderLight => outlineVariant;
   Color get error => isDark ? AppColors.darkError : AppColors.error;
 
   // Brand colors (same in both, kept for convenience)

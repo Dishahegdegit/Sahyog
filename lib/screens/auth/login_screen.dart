@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import '../donor/donor_home.dart';
@@ -43,6 +44,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (user == null) return;
+
+      await NotificationService().bindCurrentUser();
 
       // Navigate based on role
       if (!mounted) return;
@@ -115,8 +118,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.15),
-                        Colors.black.withOpacity(0.65),
+                        Colors.black.withValues(alpha: 0.15),
+                        Colors.black.withValues(alpha: 0.65),
                       ],
                     ),
                   ),
@@ -135,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withOpacity(0.4),
+                              color: AppColors.primary.withValues(alpha: 0.4),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -166,7 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               AppStrings.appTagline,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.white.withOpacity(0.85),
+                                color: Colors.white.withValues(alpha: 0.85),
                               ),
                             ),
                           ],
@@ -189,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
+                      color: Colors.black.withValues(alpha: 0.06),
                       blurRadius: 15,
                       offset: const Offset(0, 6),
                     ),

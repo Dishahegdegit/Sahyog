@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
+import '../../theme/app_theme.dart';
 import 'donation_detail_screen.dart';
 
 class DonationStatusScreen extends StatelessWidget {
@@ -61,26 +62,28 @@ class DonationStatusScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
 
+    final c = context.colors;
+
     if (currentUser == null) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: c.background,
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: AppColors.textPrimary,
+          backgroundColor: c.surface,
+          foregroundColor: c.textPrimary,
           elevation: 0,
           title: const Text('Track Donations', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
-        body: const Center(
-          child: Text('Please log in to view your donations.', style: TextStyle(color: AppColors.textPrimary)),
+        body: Center(
+          child: Text('Please log in to view your donations.', style: TextStyle(color: c.textPrimary)),
         ),
       );
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: c.surface,
+        foregroundColor: c.textPrimary,
         elevation: 0,
         title: const Text('Track Donations', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
@@ -111,25 +114,25 @@ class DonationStatusScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(
+                  children: [
+                    const Icon(
                       Icons.inbox_outlined,
                       size: 64,
                       color: AppColors.primary,
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Text(
                       'No donations found',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: c.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       'Your submitted donations will appear here',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                      style: TextStyle(color: c.textSecondary, fontSize: 13),
                     ),
                   ],
                 ),
@@ -174,9 +177,9 @@ class DonationStatusScreen extends StatelessWidget {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16.0),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.borderLight),
+                      border: Border.all(color: c.borderLight),
                       boxShadow: const [
                         BoxShadow(
                           color: Color.fromRGBO(0, 0, 0, 0.03),
@@ -214,10 +217,10 @@ class DonationStatusScreen extends StatelessWidget {
                                     const SizedBox(width: 8),
                                     Text(
                                       foodType,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
+                                        color: c.textPrimary,
                                       ),
                                     ),
                                   ],
@@ -240,7 +243,7 @@ class DonationStatusScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            const Divider(color: AppColors.borderLight, height: 24),
+                            Divider(color: c.borderLight, height: 24),
 
                             Row(
                               children: [
@@ -248,9 +251,9 @@ class DonationStatusScreen extends StatelessWidget {
                                 const SizedBox(width: 8),
                                 Text(
                                   'Quantity: $foodQuantity',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary,
+                                    color: c.textPrimary,
                                   ),
                                 ),
                                 const SizedBox(width: 16),
@@ -258,7 +261,7 @@ class DonationStatusScreen extends StatelessWidget {
                                 const SizedBox(width: 4),
                                 Text(
                                   '$servings Servings',
-                                  style: const TextStyle(color: AppColors.textSecondary),
+                                  style: TextStyle(color: c.textSecondary),
                                 ),
                               ],
                             ),
@@ -272,7 +275,7 @@ class DonationStatusScreen extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     pickupAddress.isNotEmpty ? pickupAddress : 'No address provided',
-                                    style: const TextStyle(color: AppColors.textSecondary),
+                                    style: TextStyle(color: c.textSecondary),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -287,7 +290,7 @@ class DonationStatusScreen extends StatelessWidget {
                                 const SizedBox(width: 8),
                                 Text(
                                   'Pickup Time: $pickupTime',
-                                  style: const TextStyle(color: AppColors.textSecondary),
+                                  style: TextStyle(color: c.textSecondary),
                                 ),
                               ],
                             ),
@@ -297,8 +300,8 @@ class DonationStatusScreen extends StatelessWidget {
                               alignment: Alignment.centerRight,
                               child: Text(
                                 'Submitted: $formattedDate',
-                                style: const TextStyle(
-                                  color: AppColors.textSecondary,
+                                style: TextStyle(
+                                  color: c.textSecondary,
                                   fontSize: 11,
                                 ),
                               ),

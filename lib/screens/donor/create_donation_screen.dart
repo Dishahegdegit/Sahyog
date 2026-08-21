@@ -1,16 +1,23 @@
-import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../constants/app_colors.dart';
+import '../../theme/app_theme.dart';
 import '../../models/donor/donation_model.dart';
-import '../../services/cloudinary_service.dart';
+import '../../services/storage_service.dart';
+import '../../services/donor_verification.dart';
+import '../../services/geocoding_helper.dart';
+import '../../utils/geo_distance.dart';
+import '../../utils/responsive.dart';
+import '../../widgets/location/location_map_section.dart';
+import '../../widgets/donor_notification_bell.dart';
+import 'food_photo_camera_screen.dart';
 
 class CreateDonationScreen extends StatefulWidget {
   const CreateDonationScreen({super.key});
@@ -21,13 +28,14 @@ class CreateDonationScreen extends StatefulWidget {
 
 class _CreateDonationScreenState extends State<CreateDonationScreen> {
   final _formKey = GlobalKey<FormState>();
-  final CloudinaryService _cloudinaryService = CloudinaryService();
+  final StorageService _storageService = StorageService();
   final ImagePicker _picker = ImagePicker();
 
   // Form Field State
   String _selectedFoodCategory = 'Veg'; // 'Veg' | 'Non-Veg'
-  int _servingsCount = 0;
+  int _servingsCount = 1;
 
+  final TextEditingController _foodNameController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
@@ -42,76 +50,243 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   DateTime? _termsAcceptedTimestamp;
 
   // NGO Selection State (Real Registered NGO details)
-  String _selectedNgoOption = 'Auto-Assign Nearest NGO';
-  String _selectedNgoAddress = '';
-  String _selectedNgoPhone = '';
+  static const _autoAssignId = '__auto_assign__';
+  static const _nearbyRadiusKm = 50.0;
+
+  String _selectedNgoId = _autoAssignId;
+  final TextEditingController _ngoSearchController = TextEditingController();
+  List<_DonorNgoOption> _availableNgos = [];
+  final Map<String, (double, double)> _geocodedCoords = {};
+  final Set<String> _geocodeTried = {};
+  bool _geocodeRunning = false;
 
   bool _isSubmitting = false;
   XFile? _selectedXFile;
   Uint8List? _selectedImageBytes;
   bool _isUploadingImage = false;
-  bool _isGettingLocation = false;
 
   @override
   void dispose() {
+    _foodNameController.dispose();
     _quantityController.dispose();
     _addressController.dispose();
     _notesController.dispose();
+    _ngoSearchController.dispose();
     super.dispose();
   }
 
-  /// Photo capture/upload pipeline
-  Future<void> _pickImage(ImageSource source) async {
+  /// Camera opens in-app live preview. Gallery opens the photo library only.
+  Future<void> _captureWithDeviceCamera() async {
+    final granted = await _ensureMediaPermission(ImageSource.camera);
+    if (!granted) return;
+    if (!mounted) return;
+
     try {
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        imageQuality: 80,
+      final Uint8List? bytes = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => const FoodPhotoCameraScreen(),
+          fullscreenDialog: true,
+        ),
       );
 
-      if (image != null) {
-        final bytes = await image.readAsBytes();
-        setState(() {
-          _selectedXFile = image;
-          _selectedImageBytes = bytes;
-        });
-      }
+      if (bytes == null || !mounted) return;
+
+      setState(() {
+        _selectedXFile = null;
+        _selectedImageBytes = bytes;
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error selecting image: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open camera: $e')),
+      );
     }
   }
 
+  Future<void> _pickFromGallery() async {
+    final granted = await _ensureMediaPermission(ImageSource.gallery);
+    if (!granted) return;
+
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _selectedXFile = image;
+        _selectedImageBytes = bytes;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open gallery. Please try again.')),
+      );
+    }
+  }
+
+  /// Returns true only when the donor allows the needed permission.
+  Future<bool> _ensureMediaPermission(ImageSource source) async {
+    // Web browsers handle media prompts themselves.
+    if (kIsWeb) return true;
+
+    final isCamera = source == ImageSource.camera;
+    final permission = isCamera ? Permission.camera : Permission.photos;
+
+    var status = await permission.status;
+
+    // Android gallery: photos may map to storage / photos depending on API level.
+    if (!isCamera && (status.isDenied || status.isRestricted)) {
+      final storageStatus = await Permission.storage.status;
+      if (storageStatus.isGranted) return true;
+    }
+
+    if (status.isGranted || status.isLimited) {
+      return true;
+    }
+
+    if (status.isPermanentlyDenied) {
+      await _showPermissionSettingsDialog(
+        isCamera ? 'Camera' : 'Gallery',
+        isCamera
+            ? 'Sahyog needs camera access to capture a fresh food photo. Please enable Camera in Settings.'
+            : 'Sahyog needs gallery access to choose a food photo. Please enable Photos in Settings.',
+      );
+      return false;
+    }
+
+    status = await permission.request();
+
+    // Fallback for older Android gallery access.
+    if (!isCamera && !(status.isGranted || status.isLimited)) {
+      final storageStatus = await Permission.storage.request();
+      if (storageStatus.isGranted) return true;
+    }
+
+    if (status.isGranted || status.isLimited) {
+      return true;
+    }
+
+    if (status.isPermanentlyDenied) {
+      await _showPermissionSettingsDialog(
+        isCamera ? 'Camera' : 'Gallery',
+        isCamera
+            ? 'Camera permission was denied. Enable it in Settings to take a donation photo.'
+            : 'Gallery permission was denied. Enable it in Settings to choose a donation photo.',
+      );
+      return false;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isCamera
+                ? 'Camera permission is required to take a food photo.'
+                : 'Gallery permission is required to choose a food photo.',
+          ),
+        ),
+      );
+    }
+    return false;
+  }
+
+  Future<void> _showPermissionSettingsDialog(String title, String message) async {
+    if (!mounted) return;
+    final c = context.colors;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text('$title Permission Needed', style: TextStyle(color: c.textPrimary)),
+        content: Text(message, style: TextStyle(color: c.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text('Not Now', style: TextStyle(color: c.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              await openAppSettings();
+            },
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showImageSourceDialog() {
+    final c = context.colors;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Material(
-          color: Colors.white,
-          child: Wrap(
+          color: c.surface,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Add Food Photo',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Allow Camera or Gallery permission when asked, then continue.',
+                    style: TextStyle(fontSize: 13, color: c.textSecondary),
+                  ),
+                ),
+              ),
               ListTile(
                 leading: const Icon(Icons.camera_alt, color: AppColors.primary),
-                title: const Text('Take Photo from Camera', style: TextStyle(color: AppColors.textPrimary)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.camera);
+                title: Text('Take Photo (Camera)', style: TextStyle(color: c.textPrimary)),
+                subtitle: Text(
+                  'Opens live camera to capture a fresh photo',
+                  style: TextStyle(fontSize: 12, color: c.textSecondary),
+                ),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  // Let the sheet close fully before launching camera.
+                  await Future<void>.delayed(const Duration(milliseconds: 200));
+                  await _captureWithDeviceCamera();
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library, color: AppColors.primary),
-                title: const Text('Choose from Gallery', style: TextStyle(color: AppColors.textPrimary)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.gallery);
+                title: Text('Choose from Gallery', style: TextStyle(color: c.textPrimary)),
+                subtitle: Text(
+                  'Opens your photo gallery only',
+                  style: TextStyle(fontSize: 12, color: c.textSecondary),
+                ),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await Future<void>.delayed(const Duration(milliseconds: 200));
+                  await _pickFromGallery();
                 },
               ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -119,111 +294,21 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     );
   }
 
-  /// Explicit Location Pick & Reverse Geocoding (NO FALSE THIRTHAHALLI ASSUMPTIONS)
-  Future<void> _getCurrentLocation() async {
-    setState(() => _isGettingLocation = true);
-
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services are disabled. Please turn on GPS.')),
-          );
-        }
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location permissions are denied.')),
-            );
-          }
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permissions are permanently denied.')),
-          );
-        }
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-
-      setState(() {
-        _selectedLat = position.latitude;
-        _selectedLng = position.longitude;
-      });
-
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}',
-      );
-
-      final response = await http.get(url, headers: {'User-Agent': 'SahyogApp/1.0'});
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final displayName = data['display_name'] as String?;
-
-        if (displayName != null && displayName.isNotEmpty) {
-          setState(() {
-            _addressController.text = displayName;
-          });
-        } else {
-          setState(() {
-            _addressController.text = '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-          });
-        }
-      } else {
-        setState(() {
-          _addressController.text = '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-        });
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location pin confirmed and address resolved!'),
-            backgroundColor: AppColors.statusDelivered,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Location resolution error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isGettingLocation = false);
-      }
-    }
-  }
-
+  /// Explicit Location Pick & Reverse Geocoding (OpenStreetMap / Nominatim fallback)
   void _showFoodSafetyTermsModal() {
+    final c = context.colors;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
-          children: const [
+          children: [
             Icon(Icons.verified_user_rounded, color: AppColors.primary, size: 28),
             SizedBox(width: 10),
             Text(
               'Food Safety Declaration',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: c.textPrimary),
             ),
           ],
         ),
@@ -231,24 +316,24 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Text(
                 'By submitting this donation, you agree to Sahyog Food Safety Governance Standards:',
-                style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 13),
+                style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary, fontSize: 13),
               ),
               SizedBox(height: 12),
-              Text('1. Hygiene: Food prepared in sanitary kitchens following safety protocols.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              Text('1. Hygiene: Food prepared in sanitary kitchens following safety protocols.', style: TextStyle(fontSize: 12, color: c.textSecondary)),
               SizedBox(height: 8),
-              Text('2. Freshness: Cooked food dispatched within 4 hours of preparation.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              Text('2. Freshness: Cooked food dispatched within 4 hours of preparation.', style: TextStyle(fontSize: 12, color: c.textSecondary)),
               SizedBox(height: 8),
-              Text('3. Packaging: Food packed in food-grade, leak-proof containers.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              Text('3. Packaging: Food packed in food-grade, leak-proof containers.', style: TextStyle(fontSize: 12, color: c.textSecondary)),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: Text('Cancel', style: TextStyle(color: c.textSecondary)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -271,6 +356,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   }
 
   Future<void> _selectDateTime(BuildContext context, bool isPickup) async {
+    final c = context.colors;
     final DateTime initial = DateTime.now();
     final DateTime? pickedDate = await showDatePicker(
       context: context,
@@ -279,10 +365,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       lastDate: initial.add(const Duration(days: 7)),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
+          colorScheme: ColorScheme.light(
             primary: AppColors.primary,
             onPrimary: Colors.white,
-            onSurface: AppColors.textPrimary,
+            onSurface: c.textPrimary,
           ),
         ),
         child: child!,
@@ -296,10 +382,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         initialTime: TimeOfDay.now(),
         builder: (context, child) => Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
+            colorScheme: ColorScheme.light(
               primary: AppColors.primary,
               onPrimary: Colors.white,
-              onSurface: AppColors.textPrimary,
+              onSurface: c.textPrimary,
             ),
           ),
           child: child!,
@@ -331,23 +417,172 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     return DateFormat('MMM dd, yyyy • hh:mm a').format(dt);
   }
 
+  double? _parseCoord(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  bool _isApprovedNgo(Map<String, dynamic> data) {
+    final status = (data['status'] ?? data['verificationStatus'] ?? '')
+        .toString()
+        .toLowerCase();
+    if (status.isEmpty) return true;
+    return status == 'approved';
+  }
+
+  List<String> _parseAreas(dynamic value) {
+    if (value is List) {
+      return value.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+    return const [];
+  }
+
+  (double, double)? _coordsFor(_DonorNgoOption ngo) {
+    if (ngo.latitude != null && ngo.longitude != null) {
+      return (ngo.latitude!, ngo.longitude!);
+    }
+    return _geocodedCoords[ngo.id];
+  }
+
+  double? _distanceKm(_DonorNgoOption ngo) {
+    if (_selectedLat == null || _selectedLng == null) return null;
+    final coords = _coordsFor(ngo);
+    if (coords == null) return null;
+    return GeoDistance.km(_selectedLat!, _selectedLng!, coords.$1, coords.$2);
+  }
+
+  bool _matchesPickupArea(_DonorNgoOption ngo) {
+    final pickup = _addressController.text.trim().toLowerCase();
+    if (pickup.isEmpty) return false;
+    for (final area in ngo.workingAreas) {
+      final a = area.toLowerCase();
+      if (a.isNotEmpty && pickup.contains(a)) return true;
+    }
+    final address = ngo.address.toLowerCase();
+    if (address.isEmpty || address == 'address not updated') return false;
+    final parts = address.split(',').map((e) => e.trim()).where((e) => e.length > 2);
+    return parts.any((part) => pickup.contains(part));
+  }
+
+  List<_DonorNgoOption> _rankedNearbyNgos(List<_DonorNgoOption> source) {
+    final ranked = [...source];
+    ranked.sort((a, b) {
+      final da = _distanceKm(a);
+      final db = _distanceKm(b);
+      if (da != null && db != null) return da.compareTo(db);
+      if (da != null) return -1;
+      if (db != null) return 1;
+      final ta = _matchesPickupArea(a);
+      final tb = _matchesPickupArea(b);
+      if (ta != tb) return ta ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return ranked;
+  }
+
+  List<_DonorNgoOption> _nearbyNgos(List<_DonorNgoOption> source) {
+    final ranked = _rankedNearbyNgos(source);
+    final within = ranked.where((ngo) {
+      final km = _distanceKm(ngo);
+      if (km != null) return km <= _nearbyRadiusKm;
+      return _matchesPickupArea(ngo);
+    }).toList();
+    if (within.isNotEmpty) return within;
+    return ranked.take(8).toList();
+  }
+
+  _DonorNgoOption? _resolveTargetNgo() {
+    if (_selectedNgoId != _autoAssignId) {
+      for (final ngo in _availableNgos) {
+        if (ngo.id == _selectedNgoId) return ngo;
+      }
+      return null;
+    }
+    if (_selectedLat == null || _selectedLng == null) return null;
+    final nearby = _nearbyNgos(_availableNgos);
+    if (nearby.isEmpty) return null;
+    return nearby.first;
+  }
+
+  void _selectNgo(_DonorNgoOption ngo) {
+    setState(() {
+      _selectedNgoId = ngo.id;
+    });
+  }
+
+  void _selectAutoAssign() {
+    setState(() {
+      _selectedNgoId = _autoAssignId;
+    });
+  }
+
+  void _queueMissingNgoGeocodes(List<_DonorNgoOption> ngos) {
+    if (_geocodeRunning || _selectedLat == null || _selectedLng == null) return;
+    final pending = ngos
+        .where((n) =>
+            n.latitude == null &&
+            n.longitude == null &&
+            n.address.isNotEmpty &&
+            n.address.toLowerCase() != 'address not updated' &&
+            !_geocodeTried.contains(n.id))
+        .take(8)
+        .toList();
+    if (pending.isEmpty) return;
+    _geocodeRunning = true;
+    Future(() async {
+      for (final ngo in pending) {
+        _geocodeTried.add(ngo.id);
+        final result = await GeocodingHelper.resolveAddress('${ngo.address}, India');
+        if (result != null) {
+          _geocodedCoords[ngo.id] = (result.latitude, result.longitude);
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1100));
+      }
+      _geocodeRunning = false;
+      if (mounted) setState(() {});
+    });
+  }
+
   /// Submission Contract to Firestore
   Future<void> _submitDonation() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (_servingsCount <= 0 && _quantityController.text.trim().isEmpty) {
+    if (_foodNameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter food quantity or number of servings.'),
+          content: Text('Please enter the food name.'),
           backgroundColor: AppColors.error,
         ),
       );
       return;
     }
 
-    if (_selectedXFile == null || _selectedImageBytes == null) {
+    if (_servingsCount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please set meal impact servings (at least 1).'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_quantityController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter the food quantity.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedImageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select or capture a food photo before submitting.'),
@@ -375,6 +610,16 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       return;
     }
 
+    if (_addressController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please pin or enter a pickup address so nearby NGOs can be matched.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -383,24 +628,50 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       return;
     }
 
+    final profile = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+    if (!DonorVerification.isAllowedToDonate(profile.data())) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your donor account is pending admin verification. You can donate after approval.'),
+          backgroundColor: AppColors.statusPending,
+        ),
+      );
+      return;
+    }
+
+    final assigned = _resolveTargetNgo();
+    if (assigned == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _selectedNgoId == _autoAssignId
+                ? 'Pin your pickup location so we can find nearby NGOs, or pick an NGO from the list.'
+                : 'Please select a nearby NGO to receive this donation.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
       String uploadedUrl = '';
-      if (_selectedXFile != null) {
-        setState(() => _isUploadingImage = true);
-        final url = await _cloudinaryService.uploadImage(_selectedXFile!);
-        if (url != null && url.isNotEmpty) {
-          uploadedUrl = url;
-        }
+      setState(() => _isUploadingImage = true);
+      final url = await _storageService.uploadDonationImage(
+        _selectedXFile ?? _selectedImageBytes,
+      );
+      if (url != null && url.isNotEmpty) {
+        uploadedUrl = url;
       }
 
       final donation = DonationModel(
         donorId: currentUser.uid,
+        foodName: _foodNameController.text.trim(),
         foodType: _selectedFoodCategory,
-        foodQuantity: _quantityController.text.trim().isNotEmpty
-            ? _quantityController.text.trim()
-            : '$_servingsCount meals',
+        foodQuantity: _quantityController.text.trim(),
         servings: _servingsCount,
         pickupAddress: _addressController.text.trim(),
         latitude: _selectedLat,
@@ -410,9 +681,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         notes: '${_notesController.text.trim()}${_termsAcceptedTimestamp != null ? ' • Safety Terms Accepted: ${_termsAcceptedTimestamp!.toIso8601String()}' : ''}',
         imageUrl: uploadedUrl,
         status: 'pending',
-        ngoName: _selectedNgoOption != 'Auto-Assign Nearest NGO' ? _selectedNgoOption : 'Unassigned',
-        ngoAddress: _selectedNgoAddress.isNotEmpty ? _selectedNgoAddress : null,
-        ngoPhone: _selectedNgoPhone.isNotEmpty ? _selectedNgoPhone : null,
+        ngoId: assigned.id,
+        ngoName: assigned.name,
+        ngoAddress: assigned.address.isNotEmpty ? assigned.address : null,
+        ngoPhone: assigned.phone.isNotEmpty ? assigned.phone : null,
       );
 
       await FirebaseFirestore.instance.collection('donations').add(donation.toMap());
@@ -447,12 +719,13 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
   void _resetForm() {
     _formKey.currentState?.reset();
+    _foodNameController.clear();
     _quantityController.clear();
     _addressController.clear();
     _notesController.clear();
     setState(() {
       _selectedFoodCategory = 'Veg';
-      _servingsCount = 0;
+      _servingsCount = 1;
       _pickupDateTime = null;
       _expiryDateTime = null;
       _selectedLat = null;
@@ -461,50 +734,99 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       _selectedImageBytes = null;
       _termsAcknowledged = false;
       _termsAcceptedTimestamp = null;
-      _selectedNgoOption = 'Auto-Assign Nearest NGO';
-      _selectedNgoAddress = '';
-      _selectedNgoPhone = '';
+      _selectedNgoId = _autoAssignId;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final user = FirebaseAuth.instance.currentUser;
+    final r = Responsive.of(context);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: c.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 800),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTopAppBar(user),
-                    const SizedBox(height: 20),
-
-                    const Text(
-                      'Create Food Donation',
+        child: Column(
+          children: [
+            _buildTopAppBar(user),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(horizontal: r.pagePadding, vertical: 16.0),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: r.formMaxWidth),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Create Food Donation',
                       style: TextStyle(
-                        fontSize: 26,
+                        fontSize: r.pageTitleSize,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
+                        color: c.textPrimary,
                         letterSpacing: -0.5,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Share your surplus meals safely with verified NGO partners in real-time.',
-                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                      style: TextStyle(fontSize: 14, color: c.textSecondary),
+                    ),
+                    if (user != null)
+                      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+                        builder: (context, snap) {
+                          if (!snap.hasData || DonorVerification.isAllowedToDonate(snap.data?.data())) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.statusPending.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.statusPending),
+                              ),
+                              child: const Text(
+                                'Your donor account is waiting for admin verification. Donating is unlocked after an admin verifies you.',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    SizedBox(height: r.sectionGap),
+
+                    // 1. Food Name (before category)
+                    _buildSectionHeader('1. Food Name'),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _foodNameController,
+                      style: TextStyle(color: c.textPrimary),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Please enter the food name' : null,
+                      decoration: InputDecoration(
+                        labelText: 'Food Name',
+                        labelStyle: TextStyle(color: c.textSecondary),
+                        prefixIcon: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary),
+                        filled: true,
+                        fillColor: c.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: c.borderLight),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 24),
 
-                    // 1. Food Type Selection Cards (Veg / Non-Veg)
-                    _buildSectionHeader('1. Select Food Category'),
+                    // 2. Food Type Selection Cards (Veg / Non-Veg)
+                    _buildSectionHeader('2. Select Food Category'),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -519,56 +841,60 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // 2. Quantity & Servings Count Stepper
-                    _buildSectionHeader('2. Quantity & Estimated Servings'),
+                    // 3. Quantity & Servings Count Stepper
+                    _buildSectionHeader('3. Quantity & Meal Impact Servings'),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.borderLight),
+                        border: Border.all(color: c.borderLight),
                       ),
                       child: Column(
                         children: [
                           TextFormField(
                             controller: _quantityController,
-                            style: const TextStyle(color: AppColors.textPrimary),
+                            style: TextStyle(color: c.textPrimary),
+                            validator: (v) =>
+                                (v == null || v.trim().isEmpty) ? 'Please enter quantity' : null,
                             decoration: InputDecoration(
-                              labelText: 'Quantity Description (e.g. 50 Meals / 10 Large Trays)',
-                              labelStyle: const TextStyle(color: AppColors.textSecondary),
+                              labelText: 'Quantity',
+                              helperText: 'Physical amount being donated',
+                              labelStyle: TextStyle(color: c.textSecondary),
                               prefixIcon: const Icon(Icons.scale_outlined, color: AppColors.primary),
                               filled: true,
-                              fillColor: AppColors.background,
+                              fillColor: c.background,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: AppColors.borderLight),
+                                borderSide: BorderSide(color: c.borderLight),
                               ),
                             ),
                           ),
                           const SizedBox(height: 20),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final stack = constraints.maxWidth < 360;
+                              final label = Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
+                                children: [
                                   Text(
                                     'Meal Impact Servings',
-                                    style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary),
                                   ),
                                   Text(
                                     'How many people can this feed?',
-                                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                    style: TextStyle(fontSize: 12, color: c.textSecondary),
                                   ),
                                 ],
-                              ),
-                              Row(
+                              );
+                              final stepper = Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
                                     onPressed: () {
-                                      if (_servingsCount > 0) {
-                                        setState(() => _servingsCount -= 5);
+                                      if (_servingsCount > 1) {
+                                        setState(() => _servingsCount -= 1);
                                       }
                                     },
                                     icon: const Icon(Icons.remove_circle_outline, color: AppColors.primary, size: 30),
@@ -581,7 +907,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                                     ),
                                     child: Text(
                                       '$_servingsCount',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.bold,
                                         color: AppColors.primary,
@@ -590,150 +916,131 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                                   ),
                                   IconButton(
                                     onPressed: () {
-                                      setState(() => _servingsCount += 5);
+                                      setState(() => _servingsCount += 1);
                                     },
                                     icon: const Icon(Icons.add_circle_outline, color: AppColors.primary, size: 30),
                                   ),
                                 ],
-                              ),
-                            ],
+                              );
+
+                              if (stack) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    label,
+                                    const SizedBox(height: 8),
+                                    Align(alignment: Alignment.centerRight, child: stepper),
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                children: [
+                                  Expanded(child: label),
+                                  stepper,
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 24),
 
-                    // 3. Food Condition Photo Upload
-                    _buildSectionHeader('3. Food Condition Photo'),
+                    // 4. Food Condition Photo Upload (unchanged)
+                    _buildSectionHeader('4. Food Condition Photo'),
                     const SizedBox(height: 12),
                     _buildPhotoUploadContainer(),
                     const SizedBox(height: 24),
 
-                    // 4. Pickup Address & Google Maps Location Selector (No False Thirthahalli Assumptions)
-                    _buildSectionHeader('4. Pickup Address & Location Pin'),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.borderLight),
-                      ),
-                      child: Column(
-                        children: [
-                          TextFormField(
-                            controller: _addressController,
-                            maxLines: 2,
-                            style: const TextStyle(color: AppColors.textPrimary),
-                            validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter or select pickup address' : null,
-                            decoration: InputDecoration(
-                              labelText: 'Pickup Address',
-                              hintText: 'Search area or drop pin on map to set pickup location',
-                              labelStyle: const TextStyle(color: AppColors.textSecondary),
-                              prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.primary),
-                              filled: true,
-                              fillColor: AppColors.background,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: AppColors.borderLight),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: _isGettingLocation ? null : _getCurrentLocation,
-                              icon: _isGettingLocation
-                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : const Icon(Icons.my_location_rounded, color: AppColors.primary),
-                              label: Text(
-                                _isGettingLocation ? 'Resolving GPS Address...' : 'Fetch Device GPS Location Pin',
-                                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: AppColors.primary),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    // 5. Pickup Location (map UI matching reference)
+                    LocationMapSection(
+                      title: 'Pickup Location or Drop-off Center',
+                      addressController: _addressController,
+                      addressHint: 'Enter specific address',
+                      latitude: _selectedLat,
+                      longitude: _selectedLng,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Please enter or select pickup address'
+                          : null,
+                      onLocationChanged: (address, lat, lng) {
+                        setState(() {
+                          _addressController.text = address;
+                          _selectedLat = lat;
+                          _selectedLng = lng;
+                        });
+                      },
                     ),
                     const SizedBox(height: 24),
 
-                    // 5. Select Registered NGO Partner with Name, Address, & Mobile Number
-                    _buildSectionHeader('5. Select Verified NGO Partner'),
+                    // 6. Select Registered NGO Partner with Name, Address, & Mobile Number
+                    _buildSectionHeader('6. Select Verified NGO Partner'),
                     const SizedBox(height: 12),
                     _buildNgoSelectionDropdown(),
                     const SizedBox(height: 24),
 
-                    // 6. Pickup & Expiry Time Window Pickers
-                    _buildSectionHeader('6. Logistics Time Windows'),
+                    // 7. Pickup & Expiry Time Window Pickers
+                    _buildSectionHeader('7. Logistics Time Windows'),
                     const SizedBox(height: 12),
-                    Row(
+                    ResponsiveRow(
+                      spacing: 12,
                       children: [
-                        Expanded(
-                          child: _buildTimePickerCard(
-                            title: 'Pickup Window',
-                            value: _formatDateTime(_pickupDateTime),
-                            icon: Icons.access_time_rounded,
-                            onTap: () => _selectDateTime(context, true),
-                          ),
+                        _buildTimePickerCard(
+                          title: 'Pickup Window',
+                          value: _formatDateTime(_pickupDateTime),
+                          icon: Icons.access_time_rounded,
+                          onTap: () => _selectDateTime(context, true),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTimePickerCard(
-                            title: 'Expiry Window',
-                            value: _formatDateTime(_expiryDateTime),
-                            icon: Icons.timer_outlined,
-                            onTap: () => _selectDateTime(context, false),
-                          ),
+                        _buildTimePickerCard(
+                          title: 'Expiry Window',
+                          value: _formatDateTime(_expiryDateTime),
+                          icon: Icons.timer_outlined,
+                          onTap: () => _selectDateTime(context, false),
                         ),
                       ],
                     ),
                     const SizedBox(height: 24),
 
-                    // 7. Additional Notes
+                    // 8. Additional Notes
                     TextFormField(
                       controller: _notesController,
                       maxLines: 2,
-                      style: const TextStyle(color: AppColors.textPrimary),
+                      style: TextStyle(color: c.textPrimary),
                       decoration: InputDecoration(
-                        labelText: 'Special Handling / Preparation Notes (Optional)',
-                        labelStyle: const TextStyle(color: AppColors.textSecondary),
+                        labelText: 'Notes (Optional)',
+                        hintText: 'Special handling or preparation notes',
+                        labelStyle: TextStyle(color: c.textSecondary),
                         prefixIcon: const Icon(Icons.note_alt_outlined, color: AppColors.primary),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: c.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.borderLight),
+                          borderSide: BorderSide(color: c.borderLight),
                         ),
                       ),
                     ),
                     const SizedBox(height: 24),
 
-                    // 8. Food Safety Governance Checkbox
+                    // 9. Food Safety Governance Checkbox
                     Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _termsAcknowledged ? AppColors.primary : AppColors.borderLight),
+                        border: Border.all(color: _termsAcknowledged ? AppColors.primary : c.borderLight),
                       ),
                       child: Material(
-                        color: _termsAcknowledged ? AppColors.primaryTint.withValues(alpha: 0.5) : Colors.white,
+                        color: _termsAcknowledged ? AppColors.primaryTint.withValues(alpha: 0.5) : c.surface,
                         borderRadius: BorderRadius.circular(16),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: CheckboxListTile(
                             activeColor: AppColors.primary,
-                            title: const Text(
+                            title: Text(
                               'Food Safety Governance & Hygiene Agreement',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: c.textPrimary),
                             ),
-                            subtitle: const Text(
+                            subtitle: Text(
                               'Tap to read & acknowledge food safety standards before submission.',
-                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              style: TextStyle(fontSize: 12, color: c.textSecondary),
                             ),
                             value: _termsAcknowledged,
                             onChanged: (bool? val) {
@@ -772,7 +1079,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                                 width: 22,
                                 child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                               )
-                            : const Text(
+                            : Text(
                                 'Submit Donation Request',
                                 style: TextStyle(
                                   fontSize: 18,
@@ -790,7 +1097,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           ),
         ),
       ),
-    );
+    ],
+  ),
+),
+);
   }
 
   Widget _buildTopAppBar(User? user) {
@@ -806,51 +1116,53 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
+          color: AppColors.primary,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1200),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.volunteer_activism, color: Colors.white, size: 22),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.volunteer_activism, color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Sahyog',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Sahyog',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                  Row(
+                    children: [
+                      const DonorNotificationBell(size: 24),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: CircleAvatar(
+                          radius: 16,
+                          backgroundColor: Colors.white.withValues(alpha: 0.25),
+                          backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
+                          child: profileUrl.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              Row(
-                children: [
-                  const Icon(Icons.notifications_none, color: Colors.white, size: 24),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.white.withValues(alpha: 0.25),
-                      backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
-                      child: profileUrl.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -858,17 +1170,19 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   }
 
   Widget _buildSectionHeader(String title) {
+    final c = context.colors;
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.bold,
-        color: AppColors.textPrimary,
+        color: c.textPrimary,
       ),
     );
   }
 
   Widget _buildFoodCategoryCard(String label, IconData icon, Color iconColor) {
+    final c = context.colors;
     final isSelected = _selectedFoodCategory == label;
 
     return InkWell(
@@ -878,10 +1192,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryTint.withValues(alpha: 0.4) : Colors.white,
+          color: isSelected ? AppColors.primaryTint.withValues(alpha: 0.4) : c.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.borderLight,
+            color: isSelected ? AppColors.primary : c.borderLight,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: [
@@ -903,7 +1217,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                color: isSelected ? AppColors.primary : c.textPrimary,
               ),
             ),
           ],
@@ -913,13 +1227,14 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   }
 
   Widget _buildPhotoUploadContainer() {
+    final c = context.colors;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderLight),
+        border: Border.all(color: c.borderLight),
       ),
       child: Column(
         children: [
@@ -934,8 +1249,9 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 4,
               children: [
                 TextButton.icon(
                   onPressed: _showImageSourceDialog,
@@ -957,14 +1273,14 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           ] else ...[
             Icon(Icons.add_a_photo_outlined, size: 48, color: AppColors.primary.withValues(alpha: 0.7)),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Upload Fresh Food Photo',
-              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Required for quality verification by pickup volunteers',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 12, color: c.textSecondary),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -983,142 +1299,375 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     );
   }
 
-  /// NGO Selection Dropdown with Real Name, Address, & Mobile Number
+  void _upsertNgo(
+    Map<String, _DonorNgoOption> byId, {
+    required String id,
+    required Map<String, dynamic> data,
+  }) {
+    if (id.isEmpty) return;
+    final name = (data['name'] ??
+            data['fullName'] ??
+            data['ngoName'] ??
+            data['organizationName'] ??
+            '')
+        .toString()
+        .trim();
+    if (name.isEmpty) return;
+    final address = (data['address'] ??
+            data['officialAddress'] ??
+            data['location'] ??
+            data['ngoAddress'] ??
+            '')
+        .toString()
+        .trim();
+    final phone = (data['phone'] ??
+            data['contactPhone'] ??
+            data['phoneNumber'] ??
+            data['mobile'] ??
+            '')
+        .toString()
+        .trim();
+    final lat = _parseCoord(data['latitude']);
+    final lng = _parseCoord(data['longitude']);
+    final areas = _parseAreas(data['workingAreas'] ?? data['workingArea']);
+
+    final existing = byId[id];
+    if (existing == null) {
+      byId[id] = _DonorNgoOption(
+        id: id,
+        name: name,
+        address: address.isNotEmpty ? address : 'Address not updated',
+        phone: phone.isNotEmpty ? phone : 'Phone not updated',
+        latitude: lat,
+        longitude: lng,
+        workingAreas: areas,
+      );
+      return;
+    }
+    byId[id] = _DonorNgoOption(
+      id: id,
+      name: existing.name.isNotEmpty ? existing.name : name,
+      address: existing.address == 'Address not updated' && address.isNotEmpty
+          ? address
+          : existing.address,
+      phone: existing.phone == 'Phone not updated' && phone.isNotEmpty
+          ? phone
+          : existing.phone,
+      latitude: existing.latitude ?? lat,
+      longitude: existing.longitude ?? lng,
+      workingAreas: existing.workingAreas.isNotEmpty ? existing.workingAreas : areas,
+    );
+  }
+
+  /// NGO Selection — nearby verified NGOs from pickup pin, plus search.
   Widget _buildNgoSelectionDropdown() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'ngo')
-          .snapshots(),
-      builder: (context, snapshot) {
-        final List<Map<String, String>> ngoList = [
-          {
-            'name': 'Auto-Assign Nearest NGO',
-            'address': 'Closest verified NGO based on location pin',
-            'phone': '+91 1800-SAHYOG',
-          },
-        ];
+      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+      builder: (context, usersSnap) {
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('ngos').snapshots(),
+          builder: (context, ngosSnap) {
+            final c = context.colors;
+            final Map<String, _DonorNgoOption> byId = {};
 
-        if (snapshot.hasData) {
-          for (var doc in snapshot.data!.docs) {
-            final data = doc.data();
-            final role = (data['role'] ?? '').toString().toLowerCase();
-            if (role == 'ngo') {
-              final name = (data['name'] ?? data['fullName'] ?? data['ngoName'] ?? data['organizationName'] ?? '').toString().trim();
-              final address = (data['address'] ?? data['location'] ?? data['ngoAddress'] ?? 'Verified Local NGO Partner').toString().trim();
-              final phone = (data['phone'] ?? data['phoneNumber'] ?? data['mobile'] ?? '+91 Verified Partner').toString().trim();
-
-              if (name.isNotEmpty && !ngoList.any((element) => element['name'] == name)) {
-                ngoList.add({
-                  'name': name,
-                  'address': address,
-                  'phone': phone,
-                });
+            if (usersSnap.hasData) {
+              for (final doc in usersSnap.data!.docs) {
+                final data = doc.data();
+                final role = (data['role'] ?? '').toString().toLowerCase();
+                if (role != 'ngo') continue;
+                if (!_isApprovedNgo(data)) continue;
+                _upsertNgo(byId, id: doc.id, data: data);
               }
             }
-          }
-        }
 
-        final selectedNgo = ngoList.firstWhere(
-          (element) => element['name'] == _selectedNgoOption,
-          orElse: () => ngoList.first,
-        );
+            if (ngosSnap.hasData) {
+              for (final doc in ngosSnap.data!.docs) {
+                final data = doc.data();
+                final userData = usersSnap.data?.docs
+                    .where((d) => d.id == doc.id)
+                    .map((d) => d.data())
+                    .firstOrNull;
+                if (userData != null && !_isApprovedNgo(userData) && !_isApprovedNgo(data)) {
+                  continue;
+                }
+                if (userData == null && !_isApprovedNgo(data)) continue;
+                _upsertNgo(byId, id: doc.id, data: data);
+              }
+            }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.borderLight),
+            final allNgos = byId.values.toList();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _availableNgos = allNgos;
+              _queueMissingNgoGeocodes(allNgos);
+            });
+
+            final ngoQuery = _ngoSearchController.text.trim().toLowerCase();
+            final searched = allNgos.where((ngo) {
+              if (ngoQuery.isEmpty) return true;
+              return ngo.name.toLowerCase().contains(ngoQuery) ||
+                  ngo.address.toLowerCase().contains(ngoQuery) ||
+                  ngo.phone.toLowerCase().contains(ngoQuery);
+            }).toList();
+
+            final hasPickupPin = _selectedLat != null && _selectedLng != null;
+            final nearby = hasPickupPin ? _nearbyNgos(searched) : const <_DonorNgoOption>[];
+            final ranked = _rankedNearbyNgos(searched);
+
+            final dropdownNgos = <_DonorNgoOption>[
+              const _DonorNgoOption(
+                id: _autoAssignId,
+                name: 'Auto-Assign Nearest NGO',
+                address: 'Closest verified NGO near your pickup pin',
+                phone: '',
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selectedNgo['name'],
-                  isExpanded: true,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
-                  dropdownColor: Colors.white,
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      final matched = ngoList.firstWhere((element) => element['name'] == newValue);
-                      setState(() {
-                        _selectedNgoOption = newValue;
-                        _selectedNgoAddress = matched['address'] ?? '';
-                        _selectedNgoPhone = matched['phone'] ?? '';
-                      });
-                    }
-                  },
-                  items: ngoList.map<DropdownMenuItem<String>>((Map<String, String> ngo) {
-                    final isAuto = ngo['name'] == 'Auto-Assign Nearest NGO';
-                    return DropdownMenuItem<String>(
-                      value: ngo['name'],
-                      child: Row(
-                        children: [
-                          Icon(
-                            isAuto ? Icons.auto_awesome : Icons.domain,
-                            size: 20,
-                            color: isAuto ? AppColors.primary : AppColors.secondary,
+              ...ranked,
+            ];
+
+            var dropdownValue = _selectedNgoId;
+            if (dropdownNgos.every((n) => n.id != dropdownValue)) {
+              dropdownValue = _autoAssignId;
+            }
+
+            final selectedManual = _selectedNgoId == _autoAssignId
+                ? null
+                : allNgos.where((n) => n.id == _selectedNgoId).firstOrNull;
+            final previewNearest = hasPickupPin && nearby.isNotEmpty ? nearby.first : null;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasPickupPin
+                      ? 'Nearby NGOs (within ${_nearbyRadiusKm.toStringAsFixed(0)} km of your pickup pin)'
+                      : 'Pin your pickup location on the map to see nearby NGOs',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.textSecondary),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _ngoSearchController,
+                  onChanged: (_) => setState(() {}),
+                  style: TextStyle(color: c.textPrimary, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Search nearby NGOs by name, address, or phone...',
+                    hintStyle: TextStyle(color: c.textHint, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: AppColors.primary),
+                    suffixIcon: _ngoSearchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, color: c.textSecondary, size: 18),
+                            onPressed: () {
+                              _ngoSearchController.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: c.surface,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: c.borderLight),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: c.borderLight),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: c.borderLight),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: dropdownValue,
+                      isExpanded: true,
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
+                      dropdownColor: c.surface,
+                      onChanged: (String? newValue) {
+                        if (newValue == null) return;
+                        if (newValue == _autoAssignId) {
+                          _selectAutoAssign();
+                          return;
+                        }
+                        final matched = ranked.where((n) => n.id == newValue).firstOrNull;
+                        if (matched != null) _selectNgo(matched);
+                      },
+                      items: dropdownNgos.map((ngo) {
+                        final isAuto = ngo.id == _autoAssignId;
+                        final km = isAuto ? null : _distanceKm(ngo);
+                        return DropdownMenuItem<String>(
+                          value: ngo.id,
+                          child: Row(
+                            children: [
+                              Icon(
+                                isAuto ? Icons.near_me : Icons.domain,
+                                size: 20,
+                                color: isAuto ? AppColors.primary : AppColors.secondary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  km != null
+                                      ? '${ngo.name}  •  ${km.toStringAsFixed(1)} km'
+                                      : ngo.name,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: c.textPrimary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              ngo['name']!,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  hasPickupPin
+                      ? '${nearby.length} nearby • ${allNgos.length} verified NGO${allNgos.length == 1 ? '' : 's'}'
+                      : '${allNgos.length} verified NGO${allNgos.length == 1 ? '' : 's'} available',
+                  style: TextStyle(fontSize: 12, color: c.textSecondary),
+                ),
+                if (_selectedNgoId == _autoAssignId && previewNearest != null) ...[
+                  const SizedBox(height: 10),
+                  _buildNgoInfoCard(
+                    c,
+                    title: 'Will assign: ${previewNearest.name}',
+                    subtitle:
+                        '${_distanceKm(previewNearest)?.toStringAsFixed(1) ?? '—'} km from pickup • ${previewNearest.address}',
+                    phone: previewNearest.phone,
+                    selected: false,
+                  ),
+                ],
+                if (hasPickupPin && nearby.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tap an NGO to donate to them',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.textSecondary),
+                  ),
+                  const SizedBox(height: 8),
+                  ...nearby.map((ngo) {
+                    final km = _distanceKm(ngo);
+                    final selected = _selectedNgoId == ngo.id;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _selectNgo(ngo),
+                          borderRadius: BorderRadius.circular(12),
+                          child: _buildNgoInfoCard(
+                            c,
+                            title: ngo.name,
+                            subtitle:
+                                '${km != null ? '${km.toStringAsFixed(1)} km • ' : ''}${ngo.address}',
+                            phone: ngo.phone,
+                            selected: selected,
                           ),
-                        ],
+                        ),
                       ),
                     );
-                  }).toList(),
-                ),
-              ),
+                  }),
+                ],
+                if (selectedManual != null &&
+                    nearby.every((n) => n.id != selectedManual.id)) ...[
+                  const SizedBox(height: 8),
+                  _buildNgoInfoCard(
+                    c,
+                    title: selectedManual.name,
+                    subtitle: selectedManual.address,
+                    phone: selectedManual.phone,
+                    selected: true,
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildNgoInfoCard(
+    AppColorSet c, {
+    required String title,
+    required String subtitle,
+    required String phone,
+    required bool selected,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: selected
+            ? AppColors.primaryTint.withValues(alpha: 0.45)
+            : AppColors.primaryTint.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected ? AppColors.primary : AppColors.primary.withValues(alpha: 0.3),
+          width: selected ? 1.6 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: c.textPrimary,
             ),
-            if (selectedNgo['name'] != 'Auto-Assign Nearest NGO') ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryTint.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 16, color: AppColors.primary),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Address: ${selectedNgo['address']}',
-                            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(Icons.phone, size: 16, color: AppColors.primary),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Mobile: ${selectedNgo['phone']}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textPrimary, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.location_on, size: 16, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: c.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
+          ),
+          if (phone.isNotEmpty && phone != 'Phone not updated') ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.phone, size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    phone,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: c.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -1128,15 +1677,16 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     required IconData icon,
     required VoidCallback onTap,
   }) {
+    final c = context.colors;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.borderLight),
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: c.borderLight),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1147,18 +1697,40 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                 const SizedBox(width: 8),
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 12, color: c.textSecondary, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: c.textPrimary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
       ),
     );
   }
+}
+
+class _DonorNgoOption {
+  final String id;
+  final String name;
+  final String address;
+  final String phone;
+  final double? latitude;
+  final double? longitude;
+  final List<String> workingAreas;
+
+  const _DonorNgoOption({
+    required this.id,
+    required this.name,
+    required this.address,
+    required this.phone,
+    this.latitude,
+    this.longitude,
+    this.workingAreas = const [],
+  });
 }

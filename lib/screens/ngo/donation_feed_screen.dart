@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../services/firestore_service.dart';
+import '../../utils/page_limits.dart';
 
 class DonationFeedScreen extends StatefulWidget {
   const DonationFeedScreen({super.key});
@@ -23,6 +24,11 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
   String _selectedFoodType = 'All'; // 'All', 'Veg', 'Non-Veg'
   String _selectedUrgency = 'All';  // 'All', 'High', 'Medium'
   String _searchQuery = '';
+  String _locationQuery = '';
+  DateTime? _fromDate;
+  DateTime? _toDate;
+  final TextEditingController _locationController = TextEditingController();
+  int _pageLimit = PageLimits.pageSize;
 
   @override
   void initState() {
@@ -33,6 +39,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -56,6 +63,17 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
         final locMatch = item.pickupLocation.toLowerCase().contains(query);
         if (!titleMatch && !donorMatch && !locMatch) return false;
       }
+      if (_locationQuery.isNotEmpty &&
+          !item.pickupLocation.toLowerCase().contains(_locationQuery.toLowerCase())) {
+        return false;
+      }
+      final created = item.createdAt;
+      if (_fromDate != null && (created == null || created.isBefore(_fromDate!))) {
+        return false;
+      }
+      if (_toDate != null && (created == null || created.isAfter(_toDate!))) {
+        return false;
+      }
       return true;
     }).toList();
   }
@@ -73,7 +91,7 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
             // Donation Requests List
             Expanded(
               child: StreamBuilder<List<DonationModel>>(
-                stream: _firestoreService.streamAvailableDonations(),
+                stream: _firestoreService.streamAvailableDonations(limit: _pageLimit),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
@@ -91,7 +109,13 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                   }
 
                   final allDonations = snapshot.data ?? [];
-                  final filtered = _filterDonations(allDonations);
+                  final ngoId = FirebaseAuth.instance.currentUser?.uid ?? '';
+                  final forThisNgo = allDonations.where((item) {
+                    final requested = item.requestedNgoId;
+                    if (requested == null || requested.isEmpty) return true;
+                    return requested == ngoId;
+                  }).toList();
+                  final filtered = _filterDonations(forThisNgo);
 
                   if (filtered.isEmpty) {
                     return _buildEmptyState();
@@ -99,8 +123,15 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
 
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: filtered.length,
+                    itemCount: filtered.length + 1,
                     itemBuilder: (context, index) {
+                      if (index == filtered.length) {
+                        return LoadMoreBar(
+                          visibleCount: allDonations.length,
+                          limit: _pageLimit,
+                          onLoadMore: () => setState(() => _pageLimit += PageLimits.pageSize),
+                        );
+                      }
                       return _buildDonationCard(filtered[index]);
                     },
                   );
@@ -203,6 +234,86 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
               fillColor: t.background,
               filled: true,
             ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _locationController,
+            onChanged: (val) => setState(() => _locationQuery = val.trim()),
+            style: GoogleFonts.publicSans(color: t.textPrimary, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Filter by pickup location...',
+              prefixIcon: Icon(Icons.location_on_outlined, color: t.outline),
+              suffixIcon: _locationQuery.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: t.outline, size: 20),
+                      onPressed: () {
+                        _locationController.clear();
+                        setState(() => _locationQuery = '');
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              border: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(color: t.surfaceContainerHighest, width: 1.5),
+              ),
+              fillColor: t.background,
+              filled: true,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _fromDate ?? DateTime.now(),
+                      firstDate: DateTime(DateTime.now().year - 3),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (picked != null) {
+                      setState(() => _fromDate = DateTime(picked.year, picked.month, picked.day));
+                    }
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(
+                    _fromDate == null ? 'From date' : DateFormat('dd MMM').format(_fromDate!),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _toDate ?? DateTime.now(),
+                      firstDate: DateTime(DateTime.now().year - 3),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (picked != null) {
+                      setState(() => _toDate = DateTime(picked.year, picked.month, picked.day, 23, 59, 59));
+                    }
+                  },
+                  icon: const Icon(Icons.event_outlined, size: 16),
+                  label: Text(
+                    _toDate == null ? 'To date' : DateFormat('dd MMM').format(_toDate!),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              if (_fromDate != null || _toDate != null)
+                IconButton(
+                  onPressed: () => setState(() {
+                    _fromDate = null;
+                    _toDate = null;
+                  }),
+                  icon: Icon(Icons.close, color: t.outline),
+                ),
+            ],
           ),
           const SizedBox(height: 16),
 

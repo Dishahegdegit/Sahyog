@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'auth/onboarding_screen.dart';
 import '../constants/app_colors.dart';
+import '../theme/app_theme.dart';
+import '../services/notification_service.dart';
 import 'donor/donor_home.dart';
 import 'ngo/ngo_home.dart';
 import 'admin/admin_home.dart';
@@ -66,6 +68,7 @@ class _SplashScreenState extends State<SplashScreen>
       }
 
       final role = doc.data()?['role'] ?? 'donor';
+      await NotificationService().bindCurrentUser();
 
       switch (role) {
         case 'admin':

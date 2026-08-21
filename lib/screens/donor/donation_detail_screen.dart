@@ -3,31 +3,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
 import '../../models/donor/donation_model.dart';
+import '../../theme/app_theme.dart';
+import '../../utils/donation_tracking.dart';
+import '../../widgets/donor_donation_timeline.dart';
+import '../../services/ticket_service.dart';
 
 class DonationDetailScreen extends StatelessWidget {
   final String donationId;
 
   const DonationDetailScreen({super.key, required this.donationId});
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'accepted by ngo':
-      case 'accepted':
-        return AppColors.statusAccepted;
-      case 'volunteer assigned':
-      case 'in transit':
-      case 'picked up':
-        return AppColors.statusTransit;
-      case 'delivered':
-      case 'completed':
-        return AppColors.statusDelivered;
-      case 'cancelled':
-        return AppColors.statusCancelled;
-      case 'pending':
-      default:
-        return AppColors.statusPending;
-    }
-  }
+  Color _getStatusColor(String status) => DonationTracking.statusColor(status);
 
   String _formatDate(dynamic timestamp) {
     if (timestamp == null) return 'N/A';
@@ -47,14 +33,16 @@ class DonationDetailScreen extends StatelessWidget {
   Future<void> _cancelDonation(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text('Cancel Donation', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to cancel this donation request?', style: TextStyle(color: AppColors.textSecondary)),
+      builder: (context) {
+        final c = context.colors;
+        return AlertDialog(
+        backgroundColor: c.surface,
+        title: Text('Cancel Donation', style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to cancel this donation request?', style: TextStyle(color: c.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('No', style: TextStyle(color: AppColors.textSecondary)),
+            child: Text('No', style: TextStyle(color: c.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -62,7 +50,8 @@ class DonationDetailScreen extends StatelessWidget {
             child: const Text('Yes, Cancel'),
           ),
         ],
-      ),
+      );
+      },
     );
 
     if (confirmed == true) {
@@ -87,37 +76,95 @@ class DonationDetailScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _reportIssue(BuildContext context) async {
+    final subject = TextEditingController(text: 'Issue with donation $donationId');
+    final details = TextEditingController();
+    final c = context.colors;
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text('Report an issue', style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: subject,
+              decoration: const InputDecoration(labelText: 'Subject'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: details,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'What went wrong?'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+            child: const Text('Submit ticket'),
+          ),
+        ],
+      ),
+    );
+    if (submitted != true || !context.mounted) return;
+    try {
+      await TicketService.createTicket(
+        subject: subject.text.trim().isEmpty ? 'Donation issue' : subject.text.trim(),
+        description: details.text.trim().isEmpty ? 'No details provided.' : details.text.trim(),
+        donationId: donationId,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ticket submitted. An admin will review it.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not submit ticket: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: c.surface,
+        foregroundColor: c.textPrimary,
         elevation: 0,
         title: const Text('Donation Details', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        future: FirebaseFirestore.instance
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
             .collection('donations')
             .doc(donationId)
-            .get(),
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: AppColors.error)));
           }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator(color: AppColors.primary));
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Donation not found', style: TextStyle(color: AppColors.textPrimary)));
+            return Center(child: Text('Donation not found', style: TextStyle(color: c.textPrimary)));
           }
 
           final data = snapshot.data!.data()!;
           final donation = DonationModel.fromMap(data, snapshot.data!.id);
           final statusColor = _getStatusColor(donation.status);
+          final volunteerName = (data['assignedVolunteerName'] ?? data['volunteerName'] ?? '').toString();
+          final volunteerPhone = (data['assignedVolunteerPhone'] ?? data['volunteerPhone'] ?? '').toString();
+          final ngoName = (donation.ngoName ?? data['acceptedByNgoName'] ?? '').toString();
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
@@ -131,9 +178,9 @@ class DonationDetailScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.borderLight),
+                        border: Border.all(color: c.borderLight),
                         boxShadow: const [
                           BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.03), blurRadius: 10, offset: Offset(0, 4)),
                         ],
@@ -141,9 +188,9 @@ class DonationDetailScreen extends StatelessWidget {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
+                          Text(
                             'Logistics Status:',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: c.textPrimary),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
@@ -153,7 +200,7 @@ class DonationDetailScreen extends StatelessWidget {
                               border: Border.all(color: statusColor),
                             ),
                             child: Text(
-                              donation.status.toUpperCase(),
+                              DonationTracking.displayLabel(donation.status).toUpperCase(),
                               style: TextStyle(
                                 color: statusColor,
                                 fontWeight: FontWeight.bold,
@@ -166,7 +213,11 @@ class DonationDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
 
-                    // Food Image (if available)
+                    _buildSectionTitle('Tracking Timeline'),
+                    DonorDonationTimeline(status: donation.status),
+                    const SizedBox(height: 16),
+                    _buildPickupDeliveryCards(c, donation.status),
+                    const SizedBox(height: 24),
                     if (donation.imageUrl.isNotEmpty)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(16),
@@ -182,31 +233,53 @@ class DonationDetailScreen extends StatelessWidget {
 
                     // Food Info Section
                     _buildSectionTitle('Food Information'),
-                    _buildInfoRow(Icons.restaurant_menu, 'Type', donation.foodType),
-                    _buildInfoRow(Icons.scale_outlined, 'Quantity', donation.foodQuantity),
-                    _buildInfoRow(Icons.people_outline, 'Servings', '~${donation.servings} people'),
+                    _buildInfoRow(c, Icons.restaurant_menu, 'Type', donation.foodType),
+                    _buildInfoRow(c, Icons.scale_outlined, 'Quantity', donation.foodQuantity),
+                    _buildInfoRow(c, Icons.people_outline, 'Servings', '~${donation.servings} people'),
                     const SizedBox(height: 20),
 
                     // Pickup Info Section
                     _buildSectionTitle('Pickup Information'),
-                    _buildInfoRow(Icons.location_on_outlined, 'Address', donation.pickupAddress),
-                    _buildInfoRow(Icons.access_time, 'Pickup Window', donation.pickupTime),
-                    _buildInfoRow(Icons.timer_outlined, 'Expiry Time', donation.expiryTime),
+                    _buildInfoRow(c, Icons.location_on_outlined, 'Address', donation.pickupAddress),
+                    _buildInfoRow(c, Icons.access_time, 'Pickup Window', donation.pickupTime),
+                    _buildInfoRow(c, Icons.timer_outlined, 'Expiry Time', donation.expiryTime),
+                    if (ngoName.isNotEmpty && ngoName != 'Unassigned')
+                      _buildInfoRow(c, Icons.business_outlined, 'NGO Partner', ngoName),
+                    if (volunteerName.isNotEmpty)
+                      _buildInfoRow(c, Icons.badge_outlined, 'Volunteer', volunteerName),
+                    if (volunteerPhone.isNotEmpty)
+                      _buildInfoRow(c, Icons.phone_outlined, 'Volunteer Phone', volunteerPhone),
                     const SizedBox(height: 20),
 
                     if (donation.notes.isNotEmpty) ...[
                       _buildSectionTitle('Additional Notes'),
-                      Text(donation.notes, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.4)),
+                      Text(donation.notes, style: TextStyle(color: c.textSecondary, fontSize: 14, height: 1.4)),
                       const SizedBox(height: 20),
                     ],
 
-                    _buildSectionTitle('Timeline'),
-                    _buildInfoRow(Icons.calendar_today_outlined, 'Submitted On', _formatDate(donation.createdAt)),
+                    _buildSectionTitle('Submitted'),
+                    _buildInfoRow(c, Icons.calendar_today_outlined, 'Submitted On', _formatDate(donation.createdAt)),
                     
                     const SizedBox(height: 40),
 
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _reportIssue(context),
+                        icon: const Icon(Icons.report_gmailerrorred_outlined),
+                        label: const Text('Report an issue'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
                     // Cancel Action Button
-                    if (donation.status.toLowerCase() == 'pending')
+                    if (DonationTracking.normalize(donation.status) == 'submitted')
                       SizedBox(
                         width: double.infinity,
                         height: 48,
@@ -245,7 +318,72 @@ class DonationDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  Widget _buildPickupDeliveryCards(AppColorSet c, String status) {
+    return Row(
+      children: [
+        Expanded(
+          child: _statusMiniCard(
+            c,
+            'Pickup Status',
+            DonationTracking.pickupStatus(status),
+            DonationTracking.pickupColor(status),
+            Icons.local_shipping_outlined,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _statusMiniCard(
+            c,
+            'Delivery Status',
+            DonationTracking.deliveryStatus(status),
+            DonationTracking.deliveryColor(status),
+            Icons.volunteer_activism_outlined,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusMiniCard(
+    AppColorSet c,
+    String label,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c.textSecondary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(AppColorSet c, IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
@@ -257,9 +395,9 @@ class DonationDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text(label, style: TextStyle(fontSize: 12, color: c.textSecondary)),
                 const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: c.textPrimary)),
               ],
             ),
           ),

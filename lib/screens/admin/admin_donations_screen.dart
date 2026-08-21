@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../models/donor/donation_model.dart';
 import 'package:intl/intl.dart';
+import '../../utils/page_limits.dart';
 
 class AdminDonationsScreen extends StatefulWidget {
   const AdminDonationsScreen({super.key});
@@ -16,6 +17,7 @@ class AdminDonationsScreen extends StatefulWidget {
 class _AdminDonationsScreenState extends State<AdminDonationsScreen> {
   String _selectedStatus = 'all';
   String _searchQuery = '';
+  int _pageLimit = PageLimits.pageSize;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +28,7 @@ class _AdminDonationsScreenState extends State<AdminDonationsScreen> {
         stream: FirebaseFirestore.instance
             .collection('donations')
             .orderBy('createdAt', descending: true)
+            .limit(_pageLimit)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -154,7 +157,9 @@ class _AdminDonationsScreenState extends State<AdminDonationsScreen> {
                     ),
                   )
                 else
-                  ListView.builder(
+                  Column(
+                    children: [
+                      ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: donations.length,
@@ -164,6 +169,13 @@ class _AdminDonationsScreenState extends State<AdminDonationsScreen> {
                       final donation = DonationModel.fromMap(data, doc.id);
                       return _DonationItemCard(donation: donation);
                     },
+                  ),
+                      LoadMoreBar(
+                        visibleCount: docs.length,
+                        limit: _pageLimit,
+                        onLoadMore: () => setState(() => _pageLimit += PageLimits.pageSize),
+                      ),
+                    ],
                   ),
               ],
             ),

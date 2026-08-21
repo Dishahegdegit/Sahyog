@@ -1,0 +1,10 @@
+{
+  "name": "sahyog-functions",
+  "description": "FCM push when a notifications document is created",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.1.0"
+  }
+}

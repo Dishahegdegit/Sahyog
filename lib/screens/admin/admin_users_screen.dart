@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/page_limits.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -16,6 +17,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _searchQuery = '';
   String _selectedRoleFilter = 'all';
   String _selectedStatusFilter = 'all';
+  int _pageLimit = PageLimits.pageSize;
 
   bool _isInactive(Map<String, dynamic> data) {
     final lastLogin = data['lastLoginAt'];
@@ -259,7 +261,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final colors = context.colors;
     return StreamBuilder<QuerySnapshot>(
       stream:
-          FirebaseFirestore.instance.collection('users').snapshots(),
+          FirebaseFirestore.instance.collection('users').limit(_pageLimit).snapshots(),
       builder: (context, snapshot) {
         final docs = snapshot.data?.docs ?? [];
 
@@ -501,7 +503,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     )
                   else
                     Column(
-                      children: filtered.map((doc) {
+                      children: [
+                        ...filtered.map((doc) {
                         final data =
                             doc.data() as Map<String, dynamic>;
                         final role =
@@ -904,8 +907,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                               ),
                             ),
                           );
-                        }).toList(),
-                      ),
+                        }),
+                        LoadMoreBar(
+                          visibleCount: docs.length,
+                          limit: _pageLimit,
+                          onLoadMore: () => setState(() => _pageLimit += PageLimits.pageSize),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 32),
                   ],
                 ),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
@@ -58,11 +59,11 @@ class CloudinaryService {
         return jsonData['secure_url'] as String?;
       } else {
         final errorMsg = jsonData['error']?['message'] ?? 'Cloudinary error code ${response.statusCode}';
-        print('Cloudinary Upload Failed: $errorMsg');
+        debugPrint('Cloudinary Upload Failed: $errorMsg');
         throw errorMsg;
       }
     } catch (e) {
-      print('Cloudinary Exception: $e');
+      debugPrint('Cloudinary Exception: $e');
       rethrow;
     }
   }

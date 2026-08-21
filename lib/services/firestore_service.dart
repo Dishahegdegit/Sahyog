@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/ngo/donation_model.dart';
 import '../models/ngo/ngo_model.dart';
 import '../models/ngo/volunteer_model.dart';
+import 'app_notifications.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -9,14 +10,18 @@ class FirestoreService {
   // ─── DONATION STREAMS & ACTIONS ──────────────────────────────────────────
 
   /// Stream all available food donations for NGOs to discover
-  Stream<List<DonationModel>> streamAvailableDonations() {
+  Stream<List<DonationModel>> streamAvailableDonations({int limit = 20}) {
     return _db
         .collection('donations')
+        .limit(limit)
         .snapshots()
         .map((snapshot) {
       final list = snapshot.docs
           .map((doc) => DonationModel.fromMap(doc.data(), doc.id))
-          .where((item) => item.status == 'Available')
+          .where((item) {
+            final status = item.status.toLowerCase();
+            return status == 'available' || status == 'pending';
+          })
           .toList();
 
       // Sort by urgency/created
@@ -65,28 +70,28 @@ class FirestoreService {
 
     // Notify Donor in notifications collection
     if (donorId.toString().isNotEmpty) {
-      await _db.collection('notifications').add({
-        'recipientId': donorId,
-        'donationId': donationId,
-        'title': 'Donation Request Accepted',
-        'body': '$ngoName has accepted your food donation request.',
-        'status': 'Accepted',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await AppNotifications.send(
+        userId: donorId.toString(),
+        donationId: donationId,
+        title: 'Donation Request Accepted',
+        body: '$ngoName has accepted your food donation request.',
+        status: 'Accepted',
+      );
     }
   }
 
   // ─── VOLUNTEER MANAGEMENT STREAMS & ACTIONS ──────────────────────────────
 
   /// Stream registered volunteers for an NGO
-  Stream<List<VolunteerModel>> streamVolunteers(String ngoId) {
+  Stream<List<VolunteerModel>> streamVolunteers(String ngoId, {int limit = 20}) {
     return _db
         .collection('volunteers')
+        .where('ngoId', isEqualTo: ngoId)
+        .limit(limit)
         .snapshots()
         .map((snapshot) {
       return snapshot.docs
           .map((doc) => VolunteerModel.fromMap(doc.data(), doc.id))
-          .where((v) => v.ngoId == ngoId || v.ngoId.isEmpty)
           .toList();
     });
   }
@@ -123,14 +128,13 @@ class FirestoreService {
 
     // 3. Notify Donor
     if (donorId.isNotEmpty) {
-      await _db.collection('notifications').add({
-        'recipientId': donorId,
-        'donationId': donationId,
-        'title': 'Volunteer Assigned',
-        'body': '$volunteerName ($volunteerPhone) has been assigned to pick up your donation.',
-        'status': 'Volunteer Assigned',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await AppNotifications.send(
+        userId: donorId,
+        donationId: donationId,
+        title: 'Volunteer Assigned',
+        body: '$volunteerName ($volunteerPhone) has been assigned to pick up your donation.',
+        status: 'Volunteer Assigned',
+      );
     }
   }
 

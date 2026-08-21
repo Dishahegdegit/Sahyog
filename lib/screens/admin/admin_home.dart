@@ -12,6 +12,7 @@ import 'admin_map_screen.dart';
 import 'admin_donations_screen.dart';
 import 'admin_reports_screen.dart';
 import 'admin_notifications_sheet.dart';
+import 'admin_tickets_screen.dart';
 
 class AdminHome extends StatefulWidget {
   const AdminHome({super.key});
@@ -579,6 +580,33 @@ class _AdminHomeState extends State<AdminHome> {
                   title: Text('Manage Users', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: Colors.white)),
                 ),
                 body: const AdminUsersScreen(),
+              )));
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.report_gmailerrorred_outlined, color: c.textPrimary),
+            title: Text(
+              'Issue Tickets',
+              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                appBar: AppBar(
+                  flexibleSpace: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [AppColors.primary, Color(0xFFFF8C5A)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
+                  ),
+                  elevation: 0,
+                  iconTheme: const IconThemeData(color: Colors.white),
+                  title: Text('Issue Tickets', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: Colors.white)),
+                ),
+                body: const AdminTicketsScreen(),
               )));
             },
           ),

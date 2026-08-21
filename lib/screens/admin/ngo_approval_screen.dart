@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../models/admin/ngo_approval_item.dart';
 import '../../services/location_service.dart';
+import '../../utils/page_limits.dart';
 
 // ─────────────────────────────────────────────
 //  Line Chart Painter
@@ -91,6 +92,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
   String _searchQuery = '';
   String _selectedTab = 'pending';
   String _selectedRole = 'ngo'; // 'ngo' or 'donor'
+  int _pageLimit = PageLimits.pageSize;
 
   Future<void> _approveUser(String uid, String role) async {
     final db = FirebaseFirestore.instance;
@@ -154,6 +156,7 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
       stream: FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: _selectedRole)
+          .limit(_pageLimit)
           .snapshots(),
       builder: (context, snapshot) {
         final allItems = snapshot.data?.docs ?? [];
@@ -337,6 +340,11 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
                         ),
                       );
                     }).toList(),
+                  ),
+                  LoadMoreBar(
+                    visibleCount: allItems.length,
+                    limit: _pageLimit,
+                    onLoadMore: () => setState(() => _pageLimit += PageLimits.pageSize),
                   ),
                 ] else if (_searchQuery.isNotEmpty) ...[
                   Center(

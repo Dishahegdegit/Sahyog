@@ -8,6 +8,8 @@ import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../models/ngo/volunteer_model.dart';
 import '../../services/firestore_service.dart';
+import '../../services/app_notifications.dart';
+import '../../utils/page_limits.dart';
 
 class VolunteerMgmtScreen extends StatefulWidget {
   const VolunteerMgmtScreen({super.key});
@@ -22,6 +24,9 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
   final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
+  final TextEditingController _volunteerSearchController = TextEditingController();
+  String _volunteerStatusFilter = 'All';
+  int _volunteerLimit = PageLimits.pageSize;
 
   @override
   void initState() {
@@ -32,6 +37,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _volunteerSearchController.dispose();
     super.dispose();
   }
 
@@ -112,8 +118,12 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // Sub-Tab 1: Registered Volunteers List
-                _buildVolunteerListSection(),
+                Column(
+                  children: [
+                    _buildVolunteerSearchBar(),
+                    Expanded(child: _buildVolunteerListSection()),
+                  ],
+                ),
 
                 // Sub-Tab 2: Accepted Donations Needing Volunteer Assignment
                 _buildAssignmentSection(),
@@ -179,16 +189,15 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
       // 2. Add notification for donor
       if (donation.donorId.isNotEmpty) {
-        await db.collection('notifications').add({
-          'userId': donation.donorId,
-          'donationId': donation.id,
-          'title': newStatus == 'Picked Up' ? 'Food Picked Up' : 'Food Delivered',
-          'body': newStatus == 'Picked Up'
+        await AppNotifications.send(
+          userId: donation.donorId,
+          donationId: donation.id,
+          title: newStatus == 'Picked Up' ? 'Food Picked Up' : 'Food Delivered',
+          body: newStatus == 'Picked Up'
               ? 'Your food donation is on its way to the NGO!'
               : 'Thank you! Your donation has been successfully delivered.',
-          'status': newStatus,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+          status: newStatus,
+        );
       }
 
       if (mounted) {
@@ -401,14 +410,13 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
       // 3. Notify Donor
       if (donation.donorId.isNotEmpty) {
-        await db.collection('notifications').add({
-          'userId': donation.donorId,
-          'donationId': donation.id,
-          'title': 'Food Delivered',
-          'body': 'Thank you! Your donation has been successfully delivered.',
-          'status': 'Delivered',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        await AppNotifications.send(
+          userId: donation.donorId,
+          donationId: donation.id,
+          title: 'Food Delivered',
+          body: 'Thank you! Your donation has been successfully delivered.',
+          status: 'Delivered',
+        );
       }
 
       if (mounted) {
@@ -436,9 +444,67 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
 
   // ─── SUB-TAB 1: VOLUNTEER LIST SECTION ───────────────────────────────────
 
+  Widget _buildVolunteerSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        children: [
+          TextField(
+            controller: _volunteerSearchController,
+            onChanged: (_) => setState(() {}),
+            style: GoogleFonts.publicSans(color: t.textPrimary, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Search volunteers by name, phone, or area...',
+              prefixIcon: Icon(Icons.search, color: t.outline),
+              suffixIcon: _volunteerSearchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: t.outline, size: 20),
+                      onPressed: () {
+                        _volunteerSearchController.clear();
+                        setState(() {});
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: t.background,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: t.surfaceContainerHighest),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: ['All', 'Available', 'On Delivery'].map((chip) {
+                final selected = _volunteerStatusFilter == chip;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(chip),
+                    selected: selected,
+                    selectedColor: AppColors.primary,
+                    labelStyle: GoogleFonts.publicSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? Colors.white : t.textPrimary,
+                    ),
+                    onSelected: (_) => setState(() => _volunteerStatusFilter = chip),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVolunteerListSection() {
     return StreamBuilder<List<VolunteerModel>>(
-      stream: _firestoreService.streamVolunteers(_currentNgoId),
+      stream: _firestoreService.streamVolunteers(_currentNgoId, limit: _volunteerLimit),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -446,9 +512,20 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
           );
         }
 
-        final volunteers = snapshot.data ?? [];
+        final allVolunteers = snapshot.data ?? [];
+        final volunteers = allVolunteers.where((vol) {
+          final query = _volunteerSearchController.text.trim().toLowerCase();
+          final matchesSearch = query.isEmpty ||
+              vol.name.toLowerCase().contains(query) ||
+              vol.phone.toLowerCase().contains(query) ||
+              vol.email.toLowerCase().contains(query) ||
+              vol.workingArea.toLowerCase().contains(query);
+          final matchesStatus = _volunteerStatusFilter == 'All' ||
+              vol.status.toLowerCase() == _volunteerStatusFilter.toLowerCase();
+          return matchesSearch && matchesStatus;
+        }).toList();
 
-        if (volunteers.isEmpty) {
+        if (allVolunteers.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -473,10 +550,26 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
           );
         }
 
+        if (volunteers.isEmpty) {
+          return Center(
+            child: Text(
+              'No volunteers match your search or filter.',
+              style: GoogleFonts.publicSans(color: t.textSecondary, fontSize: 13),
+            ),
+          );
+        }
+
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-          itemCount: volunteers.length,
+          itemCount: volunteers.length + 1,
           itemBuilder: (context, index) {
+            if (index == volunteers.length) {
+              return LoadMoreBar(
+                visibleCount: allVolunteers.length,
+                limit: _volunteerLimit,
+                onLoadMore: () => setState(() => _volunteerLimit += PageLimits.pageSize),
+              );
+            }
             final vol = volunteers[index];
             final bool isAvailable = vol.status.toLowerCase() == 'available';
 
@@ -983,7 +1076,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
       ),
       builder: (context) {
         return StreamBuilder<List<VolunteerModel>>(
-          stream: _firestoreService.streamVolunteers(_currentNgoId),
+          stream: _firestoreService.streamVolunteers(_currentNgoId, limit: 50),
           builder: (context, snapshot) {
             final allVolunteers = snapshot.data ?? [];
             final availableVolunteers = allVolunteers

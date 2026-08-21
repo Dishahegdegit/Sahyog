@@ -485,7 +485,7 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
         SizedBox(
           height: 240,
           child: StreamBuilder<List<DonationModel>>(
-            stream: _firestoreService.streamAvailableDonations(),
+            stream: _firestoreService.streamAvailableDonations(limit: 50),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: AppColors.primary));
@@ -792,7 +792,7 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
           SizedBox(
             height: 80,
             child: StreamBuilder<List<VolunteerModel>>(
-              stream: _firestoreService.streamVolunteers(_currentNgoId),
+              stream: _firestoreService.streamVolunteers(_currentNgoId, limit: 50),
               builder: (context, snapshot) {
                 final volsList = snapshot.data ?? [];
 

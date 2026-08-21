@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
+import '../../services/app_notifications.dart';
 
 class PickupDetailsScreen extends StatefulWidget {
   final String donationId;
@@ -225,16 +226,15 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
 
       // 3. Add notification for donor
       if (donation.donorId.isNotEmpty) {
-        await db.collection('notifications').add({
-          'userId': donation.donorId,
-          'donationId': donation.id,
-          'title': newStatus == 'Picked Up' ? 'Food Picked Up' : 'Food Delivered',
-          'body': newStatus == 'Picked Up'
+        await AppNotifications.send(
+          userId: donation.donorId,
+          donationId: donation.id,
+          title: newStatus == 'Picked Up' ? 'Food Picked Up' : 'Food Delivered',
+          body: newStatus == 'Picked Up'
               ? 'Your food donation is on its way to the NGO!'
               : 'Thank you! Your donation has been successfully delivered.',
-          'status': newStatus,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+          status: newStatus,
+        );
       }
 
       if (mounted) {
