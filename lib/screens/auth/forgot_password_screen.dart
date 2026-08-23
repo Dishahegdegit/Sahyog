@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../constants/app_colors.dart';
 import '../../services/auth_service.dart';
 
@@ -50,15 +51,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: c.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        title: const Text(
+        iconTheme: IconThemeData(color: c.textPrimary),
+        title: Text(
           'Forgot Password',
-          style: TextStyle(color: AppColors.textPrimary),
+          style: TextStyle(color: c.textPrimary),
         ),
       ),
       body: SafeArea(
@@ -72,6 +74,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   // ─── Form View ───────────────────────────────────────────────
   Widget _buildFormView() {
+    final c = context.colors;
     return Form(
       key: _formKey,
       child: Column(
@@ -99,19 +102,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           const SizedBox(height: 32),
 
           // Title
-          const Text(
+          Text(
             'Reset Password',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: c.textPrimary,
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Enter your registered email address and we\'ll send you a link to reset your password.',
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: c.textSecondary,
               fontSize: 14,
               height: 1.5,
             ),
@@ -178,6 +181,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   // ─── Success View (after email sent) ─────────────────────────
   Widget _buildSuccessView() {
+    final c = context.colors;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -199,12 +203,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
         const SizedBox(height: 32),
 
-        const Text(
+        Text(
           'Email Sent',
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: c.textPrimary,
           ),
         ),
 
@@ -213,8 +217,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Text(
           'A password reset link has been sent to\n${_emailController.text.trim()}',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
+          style: TextStyle(
+            color: c.textSecondary,
             fontSize: 15,
             height: 1.6,
           ),
@@ -222,11 +226,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
         const SizedBox(height: 12),
 
-        const Text(
+        Text(
           'Check your inbox and click the link to reset your password.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: AppColors.textSecondary,
+            color: c.textSecondary,
             fontSize: 13,
             height: 1.5,
           ),
@@ -249,9 +253,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         // Resend
         TextButton(
           onPressed: () => setState(() => _emailSent = false),
-          child: const Text(
+          child: Text(
             'Resend Email',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: c.textSecondary),
           ),
         ),
       ],

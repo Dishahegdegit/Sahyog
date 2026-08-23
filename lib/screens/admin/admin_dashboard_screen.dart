@@ -553,6 +553,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.8)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -903,6 +904,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.8)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -954,7 +956,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+                        urlTemplate: colors.isDark 
+                            ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png' 
+                            : 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
                         userAgentPackageName: 'com.sahyog.app',
                       ),
                     ],
@@ -1064,8 +1068,9 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6), width: 1.2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),

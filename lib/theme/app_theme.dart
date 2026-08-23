@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
+import 'theme_notifier.dart';
 
 class AppTheme {
   // ----------------- Light Theme -----------------
@@ -57,6 +58,11 @@ class AppTheme {
     ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: AppColors.surfaceContainerLow,
+    ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: AppColors.lightSurface,
+      titleTextStyle: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+      contentTextStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
     ),
     dividerColor: AppColors.surfaceContainerHighest,
     iconTheme: const IconThemeData(color: AppColors.textSecondary),
@@ -118,16 +124,18 @@ class AppTheme {
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: AppColors.darkSurfaceContainerLow,
     ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: AppColors.darkSurface,
+      titleTextStyle: TextStyle(color: AppColors.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+      contentTextStyle: TextStyle(color: AppColors.darkTextSecondary, fontSize: 14),
+    ),
     dividerColor: AppColors.darkSurfaceContainerHighest,
     iconTheme: const IconThemeData(color: AppColors.darkTextSecondary),
   );
 }
-
-/// Extension for easy context-aware color access.
-/// Use: context.colors.background, context.colors.surface, etc.
 extension ThemeColors on BuildContext {
   AppColorSet get colors {
-    final dark = Theme.of(this).brightness == Brightness.dark;
+    final dark = Theme.of(this).brightness == Brightness.dark || isDarkMode;
     return AppColorSet(dark);
   }
 }

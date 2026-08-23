@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../services/auth_service.dart';
@@ -90,9 +91,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: c.background,
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -188,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: c.surface,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
@@ -205,19 +207,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Welcome Back',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
+                            color: c.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
+                        Text(
                           'Login to your account',
                           style: TextStyle(
-                            color: AppColors.textSecondary,
+                            color: c.textSecondary,
                             fontSize: 13,
                           ),
                         ),
@@ -320,9 +322,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text(
+                            Text(
                               AppStrings.dontHaveAccount,
-                              style: TextStyle(color: AppColors.textSecondary),
+                              style: TextStyle(color: c.textSecondary),
                             ),
                             const SizedBox(width: 4),
                             GestureDetector(

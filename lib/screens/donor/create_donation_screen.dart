@@ -50,10 +50,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   DateTime? _termsAcceptedTimestamp;
 
   // NGO Selection State (Real Registered NGO details)
-  static const _autoAssignId = '__auto_assign__';
-  static const _nearbyRadiusKm = 50.0;
-
-  String _selectedNgoId = _autoAssignId;
+  String _selectedNgoId = '';
   final TextEditingController _ngoSearchController = TextEditingController();
   List<_DonorNgoOption> _availableNgos = [];
   final Map<String, (double, double)> _geocodedCoords = {};
@@ -423,11 +420,13 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   }
 
   bool _isApprovedNgo(Map<String, dynamic> data) {
-    final status = (data['status'] ?? data['verificationStatus'] ?? '')
+    final status = (data['status'] ?? data['verificationStatus'] ?? data['approvalStatus'] ?? data['adminStatus'] ?? '')
         .toString()
-        .toLowerCase();
-    if (status.isEmpty) return true;
-    return status == 'approved';
+        .toLowerCase()
+        .trim();
+    final verified = data['verified'] == true || data['isApproved'] == true || data['approved'] == true;
+    if (verified) return true;
+    return status == 'approved' || status == 'verified' || status == 'active';
   }
 
   List<String> _parseAreas(dynamic value) {
@@ -483,39 +482,17 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     return ranked;
   }
 
-  List<_DonorNgoOption> _nearbyNgos(List<_DonorNgoOption> source) {
-    final ranked = _rankedNearbyNgos(source);
-    final within = ranked.where((ngo) {
-      final km = _distanceKm(ngo);
-      if (km != null) return km <= _nearbyRadiusKm;
-      return _matchesPickupArea(ngo);
-    }).toList();
-    if (within.isNotEmpty) return within;
-    return ranked.take(8).toList();
-  }
-
   _DonorNgoOption? _resolveTargetNgo() {
-    if (_selectedNgoId != _autoAssignId) {
-      for (final ngo in _availableNgos) {
-        if (ngo.id == _selectedNgoId) return ngo;
-      }
-      return null;
+    if (_selectedNgoId.isEmpty) return null;
+    for (final ngo in _availableNgos) {
+      if (ngo.id == _selectedNgoId) return ngo;
     }
-    if (_selectedLat == null || _selectedLng == null) return null;
-    final nearby = _nearbyNgos(_availableNgos);
-    if (nearby.isEmpty) return null;
-    return nearby.first;
+    return null;
   }
 
   void _selectNgo(_DonorNgoOption ngo) {
     setState(() {
       _selectedNgoId = ngo.id;
-    });
-  }
-
-  void _selectAutoAssign() {
-    setState(() {
-      _selectedNgoId = _autoAssignId;
     });
   }
 
@@ -643,12 +620,8 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     final assigned = _resolveTargetNgo();
     if (assigned == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _selectedNgoId == _autoAssignId
-                ? 'Pin your pickup location so we can find nearby NGOs, or pick an NGO from the list.'
-                : 'Please select a nearby NGO to receive this donation.',
-          ),
+        const SnackBar(
+          content: Text('Please select an NGO to receive this donation.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -734,7 +707,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       _selectedImageBytes = null;
       _termsAcknowledged = false;
       _termsAcceptedTimestamp = null;
-      _selectedNgoId = _autoAssignId;
+      _selectedNgoId = '';
     });
   }
 
@@ -1305,14 +1278,18 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     required Map<String, dynamic> data,
   }) {
     if (id.isEmpty) return;
-    final name = (data['name'] ??
-            data['fullName'] ??
-            data['ngoName'] ??
+    final rawName = (data['name'] ??
             data['organizationName'] ??
-            '')
+            data['ngoName'] ??
+            data['fullName'] ??
+            data['orgName'] ??
+            data['displayName'] ??
+            data['title'] ??
+            data['email'] ??
+            'Registered NGO')
         .toString()
         .trim();
-    if (name.isEmpty) return;
+    final name = rawName.isNotEmpty ? rawName : 'Registered NGO';
     final address = (data['address'] ??
             data['officialAddress'] ??
             data['location'] ??
@@ -1346,7 +1323,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     }
     byId[id] = _DonorNgoOption(
       id: id,
-      name: existing.name.isNotEmpty ? existing.name : name,
+      name: existing.name != 'Registered NGO' && existing.name.isNotEmpty ? existing.name : name,
       address: existing.address == 'Address not updated' && address.isNotEmpty
           ? address
           : existing.address,
@@ -1359,7 +1336,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     );
   }
 
-  /// NGO Selection — nearby verified NGOs from pickup pin, plus search.
+  /// NGO Selection — all verified/approved NGOs with dropdown selection.
   Widget _buildNgoSelectionDropdown() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.collection('users').snapshots(),
@@ -1373,10 +1350,11 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
             if (usersSnap.hasData) {
               for (final doc in usersSnap.data!.docs) {
                 final data = doc.data();
-                final role = (data['role'] ?? '').toString().toLowerCase();
-                if (role != 'ngo') continue;
-                if (!_isApprovedNgo(data)) continue;
-                _upsertNgo(byId, id: doc.id, data: data);
+                final role = (data['role'] ?? data['type'] ?? data['userType'] ?? '').toString().toLowerCase().trim();
+                final isNgoRole = role == 'ngo' || (data['organizationName'] != null && data['organizationName'].toString().isNotEmpty);
+                if (isNgoRole && _isApprovedNgo(data)) {
+                  _upsertNgo(byId, id: doc.id, data: data);
+                }
               }
             }
 
@@ -1387,15 +1365,16 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     .where((d) => d.id == doc.id)
                     .map((d) => d.data())
                     .firstOrNull;
-                if (userData != null && !_isApprovedNgo(userData) && !_isApprovedNgo(data)) {
-                  continue;
+                final isAppr = _isApprovedNgo(data) || (userData != null && _isApprovedNgo(userData));
+                if (isAppr) {
+                  _upsertNgo(byId, id: doc.id, data: data);
                 }
-                if (userData == null && !_isApprovedNgo(data)) continue;
-                _upsertNgo(byId, id: doc.id, data: data);
               }
             }
 
-            final allNgos = byId.values.toList();
+            final allNgos = byId.values.toList()
+              ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
               _availableNgos = allNgos;
@@ -1410,46 +1389,26 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                   ngo.phone.toLowerCase().contains(ngoQuery);
             }).toList();
 
-            final hasPickupPin = _selectedLat != null && _selectedLng != null;
-            final nearby = hasPickupPin ? _nearbyNgos(searched) : const <_DonorNgoOption>[];
             final ranked = _rankedNearbyNgos(searched);
-
-            final dropdownNgos = <_DonorNgoOption>[
-              const _DonorNgoOption(
-                id: _autoAssignId,
-                name: 'Auto-Assign Nearest NGO',
-                address: 'Closest verified NGO near your pickup pin',
-                phone: '',
-              ),
-              ...ranked,
-            ];
-
-            var dropdownValue = _selectedNgoId;
-            if (dropdownNgos.every((n) => n.id != dropdownValue)) {
-              dropdownValue = _autoAssignId;
-            }
-
-            final selectedManual = _selectedNgoId == _autoAssignId
-                ? null
-                : allNgos.where((n) => n.id == _selectedNgoId).firstOrNull;
-            final previewNearest = hasPickupPin && nearby.isNotEmpty ? nearby.first : null;
+            final selectedNgo = allNgos.where((n) => n.id == _selectedNgoId).firstOrNull;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Count badge
                 Text(
-                  hasPickupPin
-                      ? 'Nearby NGOs (within ${_nearbyRadiusKm.toStringAsFixed(0)} km of your pickup pin)'
-                      : 'Pin your pickup location on the map to see nearby NGOs',
+                  '${allNgos.length} verified NGO${allNgos.length == 1 ? '' : 's'} available',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.textSecondary),
                 ),
                 const SizedBox(height: 8),
+
+                // Search box
                 TextField(
                   controller: _ngoSearchController,
                   onChanged: (_) => setState(() {}),
                   style: TextStyle(color: c.textPrimary, fontSize: 13),
                   decoration: InputDecoration(
-                    hintText: 'Search nearby NGOs by name, address, or phone...',
+                    hintText: 'Search NGOs by name, address, or phone...',
                     hintStyle: TextStyle(color: c.textHint, fontSize: 13),
                     prefixIcon: const Icon(Icons.search, color: AppColors.primary),
                     suffixIcon: _ngoSearchController.text.isNotEmpty
@@ -1474,50 +1433,69 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
+
+                // NGO Dropdown Button with Downward Arrow
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                   decoration: BoxDecoration(
                     color: c.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: c.borderLight),
+                    border: Border.all(
+                      color: _selectedNgoId.isNotEmpty ? AppColors.primary : c.borderLight,
+                      width: _selectedNgoId.isNotEmpty ? 1.6 : 1,
+                    ),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: dropdownValue,
+                      value: _selectedNgoId.isNotEmpty && ranked.any((n) => n.id == _selectedNgoId)
+                          ? _selectedNgoId
+                          : null,
+                      hint: Row(
+                        children: [
+                          const Icon(Icons.domain_rounded, color: AppColors.primary, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Select from verified NGO',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       isExpanded: true,
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.primary,
+                        size: 26,
+                      ),
                       dropdownColor: c.surface,
                       onChanged: (String? newValue) {
-                        if (newValue == null) return;
-                        if (newValue == _autoAssignId) {
-                          _selectAutoAssign();
-                          return;
+                        if (newValue != null) {
+                          final selected = ranked.firstWhere((n) => n.id == newValue);
+                          _selectNgo(selected);
                         }
-                        final matched = ranked.where((n) => n.id == newValue).firstOrNull;
-                        if (matched != null) _selectNgo(matched);
                       },
-                      items: dropdownNgos.map((ngo) {
-                        final isAuto = ngo.id == _autoAssignId;
-                        final km = isAuto ? null : _distanceKm(ngo);
+                      items: ranked.map((ngo) {
+                        final km = _distanceKm(ngo);
                         return DropdownMenuItem<String>(
                           value: ngo.id,
                           child: Row(
                             children: [
-                              Icon(
-                                isAuto ? Icons.near_me : Icons.domain,
-                                size: 20,
-                                color: isAuto ? AppColors.primary : AppColors.secondary,
-                              ),
+                              const Icon(Icons.verified_rounded, color: AppColors.primary, size: 18),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   km != null
-                                      ? '${ngo.name}  •  ${km.toStringAsFixed(1)} km'
+                                      ? '${ngo.name} (${km.toStringAsFixed(1)} km away)'
                                       : ngo.name,
                                   style: TextStyle(
-                                    fontWeight: FontWeight.bold,
                                     fontSize: 13,
+                                    fontWeight: FontWeight.w700,
                                     color: c.textPrimary,
                                   ),
                                   maxLines: 1,
@@ -1531,65 +1509,53 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  hasPickupPin
-                      ? '${nearby.length} nearby • ${allNgos.length} verified NGO${allNgos.length == 1 ? '' : 's'}'
-                      : '${allNgos.length} verified NGO${allNgos.length == 1 ? '' : 's'} available',
-                  style: TextStyle(fontSize: 12, color: c.textSecondary),
-                ),
-                if (_selectedNgoId == _autoAssignId && previewNearest != null) ...[
-                  const SizedBox(height: 10),
-                  _buildNgoInfoCard(
-                    c,
-                    title: 'Will assign: ${previewNearest.name}',
-                    subtitle:
-                        '${_distanceKm(previewNearest)?.toStringAsFixed(1) ?? '—'} km from pickup • ${previewNearest.address}',
-                    phone: previewNearest.phone,
-                    selected: false,
-                  ),
-                ],
-                if (hasPickupPin && nearby.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+                const SizedBox(height: 10),
+
+                // Selected NGO Info Card Display
+                if (selectedNgo != null) ...[
                   Text(
-                    'Tap an NGO to donate to them',
+                    'Selected Recipient NGO',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.textSecondary),
                   ),
-                  const SizedBox(height: 8),
-                  ...nearby.map((ngo) {
-                    final km = _distanceKm(ngo);
-                    final selected = _selectedNgoId == ngo.id;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => _selectNgo(ngo),
-                          borderRadius: BorderRadius.circular(12),
-                          child: _buildNgoInfoCard(
-                            c,
-                            title: ngo.name,
-                            subtitle:
-                                '${km != null ? '${km.toStringAsFixed(1)} km • ' : ''}${ngo.address}',
-                            phone: ngo.phone,
-                            selected: selected,
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ],
-                if (selectedManual != null &&
-                    nearby.every((n) => n.id != selectedManual.id)) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   _buildNgoInfoCard(
                     c,
-                    title: selectedManual.name,
-                    subtitle: selectedManual.address,
-                    phone: selectedManual.phone,
+                    title: selectedNgo.name,
+                    subtitle: [
+                      if (_distanceKm(selectedNgo) != null)
+                        '${_distanceKm(selectedNgo)!.toStringAsFixed(1)} km away',
+                      if (selectedNgo.address.isNotEmpty && selectedNgo.address != 'Address not updated')
+                        selectedNgo.address,
+                    ].join(' • '),
+                    phone: selectedNgo.phone,
                     selected: true,
                   ),
                 ],
+
+                if (ranked.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(top: 8),
+                    decoration: BoxDecoration(
+                      color: c.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: c.borderLight),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.domain_disabled_outlined, color: c.textSecondary, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            ngoQuery.isEmpty
+                                ? 'No verified NGOs available yet.'
+                                : 'No NGO matches "$ngoQuery".',
+                            style: TextStyle(fontSize: 13, color: c.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             );
           },

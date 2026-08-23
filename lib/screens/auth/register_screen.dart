@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/app_strings.dart';
 import '../../services/auth_service.dart';
@@ -86,12 +87,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: c.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        iconTheme: IconThemeData(color: c.textPrimary),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -104,19 +106,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 8),
 
                 // Header
-                const Text(
+                Text(
                   'Create Account',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                    color: c.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Join Sahyog and make a difference',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: c.textSecondary,
                     fontSize: 14,
                   ),
                 ),
@@ -223,12 +225,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 24),
 
                 // Role Selection
-                const Text(
+                Text(
                   'Register as:',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: c.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -245,12 +247,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           decoration: BoxDecoration(
                             color: _selectedRole == 'donor'
                                 ? AppColors.primary
-                                : AppColors.surfaceContainerHigh,
+                                : c.surface,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: _selectedRole == 'donor'
                                   ? AppColors.primary
-                                  : AppColors.outlineVariant,
+                                  : c.borderLight,
                             ),
                           ),
                           child: Column(
@@ -259,7 +261,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 Icons.volunteer_activism,
                                 color: _selectedRole == 'donor'
                                     ? Colors.white
-                                    : AppColors.textSecondary,
+                                    : c.textSecondary,
                                 size: 22,
                               ),
                               const SizedBox(height: 4),
@@ -269,7 +271,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   fontSize: 13,
                                   color: _selectedRole == 'donor'
                                       ? Colors.white
-                                      : AppColors.textSecondary,
+                                      : c.textSecondary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -291,12 +293,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           decoration: BoxDecoration(
                             color: _selectedRole == 'ngo'
                                 ? AppColors.primary
-                                : AppColors.surfaceContainerHigh,
+                                : c.surface,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: _selectedRole == 'ngo'
                                   ? AppColors.primary
-                                  : AppColors.outlineVariant,
+                                  : c.borderLight,
                             ),
                           ),
                           child: Column(
@@ -305,7 +307,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 Icons.handshake_outlined,
                                 color: _selectedRole == 'ngo'
                                     ? Colors.white
-                                    : AppColors.textSecondary,
+                                    : c.textSecondary,
                                 size: 22,
                               ),
                               const SizedBox(height: 4),
@@ -315,7 +317,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   fontSize: 13,
                                   color: _selectedRole == 'ngo'
                                       ? Colors.white
-                                      : AppColors.textSecondary,
+                                      : c.textSecondary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -329,11 +331,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Note about Admin
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   '* Admin accounts are created by the system',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: c.textSecondary,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -365,9 +367,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
+                    Text(
                       AppStrings.alreadyHaveAccount,
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: c.textSecondary),
                     ),
                     GestureDetector(
                       onTap: () => Navigator.pop(context),

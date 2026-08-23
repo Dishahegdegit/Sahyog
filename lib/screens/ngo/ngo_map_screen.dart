@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' hide Path;
 import '../../constants/app_colors.dart';
 import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
@@ -73,9 +75,54 @@ class _NgoMapScreenState extends State<NgoMapScreen> {
                               .toList()),
                       builder: (context, snapshot) {
                         final activePickups = snapshot.data ?? [];
-                        return CustomPaint(
-                          size: Size.infinite,
-                          painter: InteractiveMapPainter(activePickups: activePickups, isDark: t.isDark),
+                        final tileUrl = t.isDark
+                            ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
+                            : 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png';
+                        return FlutterMap(
+                          options: const MapOptions(
+                            initialCenter: LatLng(19.0760, 72.8777),
+                            initialZoom: 12.0,
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: tileUrl,
+                              userAgentPackageName: 'com.sahyog.app',
+                            ),
+                            MarkerLayer(
+                              markers: activePickups.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final p = entry.value;
+                                final lat = 19.0760 + (idx * 0.015);
+                                final lng = 72.8777 + (idx * 0.012);
+                                return Marker(
+                                  point: LatLng(lat, lng),
+                                  width: 40,
+                                  height: 40,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => PickupDetailsScreen(donationId: p.id),
+                                        ),
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: t.primary,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(color: t.primary.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3)),
+                                        ],
+                                      ),
+                                      child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
                         );
                       },
                     ),

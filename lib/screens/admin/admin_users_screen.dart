@@ -34,21 +34,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   Future<void> _removeUser(BuildContext context, String uid, String role, String name) async {
+    final colors = context.colors;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: AppColors.outlineVariant),
+          side: BorderSide(color: colors.outlineVariant),
         ),
         title: Text(
           'Remove Account',
-          style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+          style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: colors.textPrimary),
         ),
         content: Text(
           'Permanently remove $name from the platform? This deletes their profile data.',
-          style: GoogleFonts.publicSans(fontSize: 14, color: AppColors.textSecondary),
+          style: GoogleFonts.publicSans(fontSize: 14, color: colors.textSecondary),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -84,6 +85,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   void _showAddNgoDialog(BuildContext context) {
+    final colors = context.colors;
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     final addressController = TextEditingController();
@@ -93,38 +95,43 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Add & Verify NGO', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700)),
+        title: Text('Add & Verify NGO', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: colors.textPrimary)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameController,
-                decoration: const InputDecoration(labelText: 'NGO Name', hintText: 'Full Organization Name'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'NGO Name', hintText: 'Full Organization Name', labelStyle: TextStyle(color: colors.textSecondary)),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: regIdController,
-                decoration: const InputDecoration(labelText: 'Registration ID', hintText: 'Official Govt ID'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'Registration ID', hintText: 'Official Govt ID', labelStyle: TextStyle(color: colors.textSecondary)),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: emailController,
-                decoration: const InputDecoration(labelText: 'Official Email', hintText: 'contact@ngo.org'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'Official Email', hintText: 'contact@ngo.org', labelStyle: TextStyle(color: colors.textSecondary)),
                 keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: phoneController,
-                decoration: const InputDecoration(labelText: 'Phone Number', hintText: '+91 00000 00000'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'Phone Number', hintText: '+91 00000 00000', labelStyle: TextStyle(color: colors.textSecondary)),
                 keyboardType: TextInputType.phone,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: addressController,
-                decoration: const InputDecoration(labelText: 'Official Address', hintText: 'Headquarters Location'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'Official Address', hintText: 'Headquarters Location', labelStyle: TextStyle(color: colors.textSecondary)),
                 maxLines: 2,
               ),
             ],
@@ -187,6 +194,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   void _showEditNgoDialog(BuildContext context, String uid, Map<String, dynamic> data) {
+    final colors = context.colors;
     final nameController = TextEditingController(text: data['name'] ?? '');
     final emailController = TextEditingController(text: data['email'] ?? '');
     final addressController = TextEditingController(text: data['address'] ?? '');
@@ -194,27 +202,30 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Update NGO Details', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700)),
+        title: Text('Update NGO Details', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: colors.textPrimary)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameController,
-                decoration: const InputDecoration(labelText: 'NGO Name'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'NGO Name', labelStyle: TextStyle(color: colors.textSecondary)),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: emailController,
-                decoration: const InputDecoration(labelText: 'Email Address'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'Email Address', labelStyle: TextStyle(color: colors.textSecondary)),
                 keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: addressController,
-                decoration: const InputDecoration(labelText: 'Address'),
+                style: TextStyle(color: colors.textPrimary),
+                decoration: InputDecoration(labelText: 'Address', labelStyle: TextStyle(color: colors.textSecondary)),
                 maxLines: 2,
               ),
             ],
@@ -390,10 +401,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                             margin: const EdgeInsets.only(right: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             decoration: BoxDecoration(
-                              color: isActive ? AppColors.primary : AppColors.surfaceContainerLow,
+                              color: isActive ? AppColors.primary : colors.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: isActive ? AppColors.primary : AppColors.surfaceContainerHighest,
+                                color: isActive ? AppColors.primary : colors.outlineVariant,
                               ),
                             ),
                             child: Text(
@@ -401,7 +412,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                               style: GoogleFonts.inter(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: isActive ? Colors.white : AppColors.textSecondary,
+                                color: isActive ? Colors.white : colors.textSecondary,
                               ),
                             ),
                           ),
@@ -434,10 +445,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                             decoration: BoxDecoration(
                               color: isActive
                                   ? AppColors.secondary.withValues(alpha: 0.15)
-                                  : AppColors.surfaceContainerLow,
+                                  : colors.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: isActive ? AppColors.secondary : AppColors.surfaceContainerHighest,
+                                color: isActive ? AppColors.secondary : colors.outlineVariant,
                               ),
                             ),
                             child: Text(
@@ -445,7 +456,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                               style: GoogleFonts.inter(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: isActive ? AppColors.secondary : AppColors.textSecondary,
+                                color: isActive ? AppColors.secondary : colors.textSecondary,
                               ),
                             ),
                           ),
@@ -474,7 +485,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                             Icon(
                               Icons.group_off_outlined,
                               size: 52,
-                              color: AppColors.textSecondary
+                              color: colors.textSecondary
                                   .withValues(alpha: 0.4),
                             ),
                             const SizedBox(height: 12),
@@ -483,7 +494,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                               style: GoogleFonts.publicSans(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
+                                color: colors.textPrimary,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -494,7 +505,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                   : 'Registered users will appear here.',
                               style: GoogleFonts.inter(
                                 fontSize: 13,
-                                color: AppColors.textSecondary,
+                                color: colors.textSecondary,
                               ),
                             ),
                           ],
@@ -505,398 +516,254 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     Column(
                       children: [
                         ...filtered.map((doc) {
-                        final data =
-                            doc.data() as Map<String, dynamic>;
-                        final role =
-                            (data['role'] ?? 'donor').toString();
+                          final data = doc.data() as Map<String, dynamic>;
+                          final role = (data['role'] ?? 'donor').toString();
 
-                        Color roleColor;
-                        if (role == 'ngo') {
-                          roleColor = AppColors.secondary;
-                        } else if (role == 'volunteer') {
-                          roleColor = AppColors.tertiary;
-                        } else if (role == 'admin') {
-                          roleColor = Colors.purpleAccent;
-                        } else {
-                          roleColor = AppColors.primary;
-                        }
+                          Color roleColor;
+                          if (role == 'ngo') {
+                            roleColor = AppColors.secondary;
+                          } else if (role == 'volunteer') {
+                            roleColor = AppColors.tertiary;
+                          } else if (role == 'admin') {
+                            roleColor = Colors.purpleAccent;
+                          } else {
+                            roleColor = AppColors.primary;
+                          }
 
-                        final isBanned = data['banned'] == true;
-                        final isFlagged = data['flagged'] == true;
-                        final isVerified = data['verified'] == true;
+                          final isBanned = data['banned'] == true;
+                          final isFlagged = data['flagged'] == true;
+                          final isVerified = data['verified'] == true;
 
-                        Color borderColor = colors.outlineVariant;
-                        double borderWidth = 1.0;
-                        if (isBanned) {
-                          borderColor = AppColors.error.withValues(alpha: 0.5);
-                          borderWidth = 1.5;
-                        } else if (isFlagged) {
-                          borderColor = Colors.orange.withValues(alpha: 0.5);
-                          borderWidth = 1.5;
-                        } else if (isVerified) {
-                          borderColor = AppColors.secondary.withValues(alpha: 0.5);
-                          borderWidth = 1.5;
-                        }
+                          Color borderColor = colors.outlineVariant;
+                          double borderWidth = 1.0;
+                          if (isBanned) {
+                            borderColor = AppColors.error.withValues(alpha: 0.5);
+                            borderWidth = 1.5;
+                          } else if (isFlagged) {
+                            borderColor = Colors.orange.withValues(alpha: 0.5);
+                            borderWidth = 1.5;
+                          } else if (isVerified) {
+                            borderColor = AppColors.secondary.withValues(alpha: 0.5);
+                            borderWidth = 1.5;
+                          }
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: colors.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: borderColor,
-                                width: borderWidth,
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: colors.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: borderColor,
+                                  width: borderWidth,
+                                ),
                               ),
-                            ),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 22,
-                                  backgroundColor:
-                                      roleColor.withValues(alpha: 0.15),
-                                  child: Icon(
-                                    role == 'ngo'
-                                        ? Icons.shield_outlined
-                                        : role == 'volunteer'
-                                            ? Icons.group_outlined
-                                            : Icons.person_outline,
-                                    color: roleColor,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        data['name'] ??
-                                            data['email'] ??
-                                            'User',
-                                        style: GoogleFonts.publicSans(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: colors.textPrimary,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        data['email'] ?? '',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          color: colors.textSecondary,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (data['banned'] == true || data['flagged'] == true || data['verified'] == true || _isInactive(data)) ...[
-                                        const SizedBox(height: 6),
-                                        Wrap(
-                                          spacing: 6,
-                                          runSpacing: 4,
-                                          children: [
-                                            if (data['verified'] == true && role == 'donor')
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.secondary.withValues(alpha: 0.1),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3)),
-                                                ),
-                                                child: Text(
-                                                  'VERIFIED',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 8,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: AppColors.secondary,
-                                                  ),
-                                                ),
-                                              ),
-                                            if (_isInactive(data))
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.textSecondary.withValues(alpha: 0.1),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
-                                                ),
-                                                child: Text(
-                                                  'INACTIVE',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 8,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: AppColors.textSecondary,
-                                                  ),
-                                                ),
-                                              ),
-                                            if (data['banned'] == true)
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.error.withValues(alpha: 0.1),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-                                                ),
-                                                child: Text(
-                                                  'BANNED',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 8,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: AppColors.error,
-                                                  ),
-                                                ),
-                                              ),
-                                            if (data['flagged'] == true)
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.orange.withValues(alpha: 0.1),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                                                ),
-                                                child: Text(
-                                                  'FLAGGED',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 8,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: Colors.orange,
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: roleColor.withValues(alpha: 0.15),
-                                        borderRadius:
-                                            BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        role.toUpperCase(),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w800,
-                                          color: roleColor,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundColor: roleColor.withValues(alpha: 0.15),
+                                    child: Icon(
+                                      role == 'ngo'
+                                          ? Icons.shield_outlined
+                                          : role == 'volunteer'
+                                              ? Icons.group_outlined
+                                              : Icons.person_outline,
+                                      color: roleColor,
+                                      size: 20,
                                     ),
-                                    const SizedBox(width: 4),
-                                    PopupMenuButton<String>(
-                                      icon: const Icon(
-                                        Icons.more_vert,
-                                        color: AppColors.textSecondary,
-                                        size: 20,
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          data['name'] ?? data['email'] ?? 'User',
+                                          style: GoogleFonts.publicSans(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                            color: colors.textPrimary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          data['email'] ?? '',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            color: colors.textSecondary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (data['banned'] == true || data['flagged'] == true || data['verified'] == true || _isInactive(data)) ...[
+                                          const SizedBox(height: 6),
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: [
+                                              if (data['verified'] == true && role == 'donor')
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.secondary.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3)),
+                                                  ),
+                                                  child: Text('VERIFIED', style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.secondary)),
+                                                ),
+                                              if (_isInactive(data))
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.textSecondary.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                                                  ),
+                                                  child: Text('INACTIVE', style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
+                                                ),
+                                              if (data['banned'] == true)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.error.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                                                  ),
+                                                  child: Text('BANNED', style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.error)),
+                                                ),
+                                              if (data['flagged'] == true)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.orange.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                                                  ),
+                                                  child: Text('FLAGGED', style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.orange)),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: roleColor.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          role.toUpperCase(),
+                                          style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: roleColor, letterSpacing: 0.5),
+                                        ),
                                       ),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        side: BorderSide(color: AppColors.outlineVariant),
-                                      ),
-                                      color: AppColors.surface,
-                                      onSelected: (value) async {
-                                        final uid = doc.id;
-                                        final name = data['name'] ?? data['email'] ?? 'User';
-                                        if (value == 'flag') {
-                                          await FirebaseFirestore.instance.collection('users').doc(uid).update({'flagged': true});
-                                          await FirebaseFirestore.instance.collection('notifications').add({
-                                            'title': 'Account Flagged',
-                                            'body': 'Your account has been flagged for review due to suspicious activity.',
-                                            'recipientId': uid,
-                                            'createdAt': FieldValue.serverTimestamp(),
-                                            'category': 'system',
-                                          });
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('$name flagged')),
-                                            );
+                                      const SizedBox(width: 4),
+                                      PopupMenuButton<String>(
+                                        icon: Icon(Icons.more_vert, color: colors.textSecondary, size: 20),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          side: BorderSide(color: colors.outlineVariant),
+                                        ),
+                                        color: colors.surface,
+                                        onSelected: (value) async {
+                                          final uid = doc.id;
+                                          final name = data['name'] ?? data['email'] ?? 'User';
+                                          if (value == 'flag') {
+                                            await FirebaseFirestore.instance.collection('users').doc(uid).update({'flagged': true});
+                                            await FirebaseFirestore.instance.collection('notifications').add({'title': 'Account Flagged', 'body': 'Your account has been flagged for review due to suspicious activity.', 'recipientId': uid, 'createdAt': FieldValue.serverTimestamp(), 'category': 'system'});
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name flagged')));
+                                          } else if (value == 'unflag') {
+                                            await FirebaseFirestore.instance.collection('users').doc(uid).update({'flagged': false});
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name unflagged')));
+                                          } else if (value == 'ban') {
+                                            await FirebaseFirestore.instance.collection('users').doc(uid).update({'banned': true});
+                                            await FirebaseFirestore.instance.collection('notifications').add({'title': 'Account Banned', 'body': 'Your account has been suspended for violating platform policies.', 'recipientId': uid, 'createdAt': FieldValue.serverTimestamp(), 'category': 'system'});
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name banned')));
+                                          } else if (value == 'unban') {
+                                            await FirebaseFirestore.instance.collection('users').doc(uid).update({'banned': false});
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name unbanned')));
+                                          } else if (value == 'verify') {
+                                            final updateData = {'verified': true, 'status': 'approved'};
+                                            await FirebaseFirestore.instance.collection('users').doc(uid).update(updateData);
+                                            if (role == 'ngo') {
+                                              await FirebaseFirestore.instance.collection('ngos').doc(uid).set(updateData, SetOptions(merge: true));
+                                            }
+                                            await FirebaseFirestore.instance.collection('notifications').add({'title': 'Account Verified', 'body': 'Your account has been successfully verified by the Sahyog admin.', 'recipientId': uid, 'createdAt': FieldValue.serverTimestamp(), 'category': 'system'});
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name verified'), backgroundColor: AppColors.secondary));
+                                          } else if (value == 'unverify') {
+                                            final updateData = {'verified': false, 'status': 'rejected'};
+                                            await FirebaseFirestore.instance.collection('users').doc(uid).update(updateData);
+                                            if (role == 'ngo') {
+                                              await FirebaseFirestore.instance.collection('ngos').doc(uid).set(updateData, SetOptions(merge: true));
+                                            }
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name verification removed')));
+                                          } else if (value == 'remove') {
+                                            if (context.mounted) await _removeUser(context, uid, role, name);
+                                          } else if (value == 'edit') {
+                                            if (context.mounted) _showEditNgoDialog(context, uid, data);
                                           }
-                                        } else if (value == 'unflag') {
-                                          await FirebaseFirestore.instance.collection('users').doc(uid).update({'flagged': false});
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('$name unflagged')),
-                                            );
-                                          }
-                                        } else if (value == 'ban') {
-                                          await FirebaseFirestore.instance.collection('users').doc(uid).update({'banned': true});
-                                          await FirebaseFirestore.instance.collection('notifications').add({
-                                            'title': 'Account Banned',
-                                            'body': 'Your account has been suspended for violating platform policies.',
-                                            'recipientId': uid,
-                                            'createdAt': FieldValue.serverTimestamp(),
-                                            'category': 'system',
-                                          });
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('$name banned')),
-                                            );
-                                          }
-                                        } else if (value == 'unban') {
-                                          await FirebaseFirestore.instance.collection('users').doc(uid).update({'banned': false});
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('$name unbanned')),
-                                            );
-                                          }
-                                        } else if (value == 'verify') {
-                                          await FirebaseFirestore.instance.collection('users').doc(uid).update({'verified': true});
-                                          await FirebaseFirestore.instance.collection('notifications').add({
-                                            'title': 'Account Verified',
-                                            'body': 'Your account has been successfully verified by the Sahyog admin.',
-                                            'recipientId': uid,
-                                            'createdAt': FieldValue.serverTimestamp(),
-                                            'category': 'system',
-                                          });
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('$name verified'), backgroundColor: AppColors.secondary),
-                                            );
-                                          }
-                                        } else if (value == 'unverify') {
-                                          await FirebaseFirestore.instance.collection('users').doc(uid).update({'verified': false});
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('$name verification removed')),
-                                            );
-                                          }
-                                        } else if (value == 'remove') {
-                                          if (context.mounted) {
-                                            await _removeUser(context, uid, role, name);
-                                          }
-                                        } else if (value == 'edit') {
-                                          if (context.mounted) {
-                                            _showEditNgoDialog(context, uid, data);
-                                          }
-                                        }
-                                      },
-                                      itemBuilder: (context) {
-                                        final isBanned = data['banned'] == true;
-                                        final isFlagged = data['flagged'] == true;
-                                        final isVerified = data['verified'] == true;
-                                        return [
-                                          if (role == 'ngo') ...[
-                                            PopupMenuItem<String>(
-                                              value: 'edit',
-                                              child: Row(
-                                                children: [
+                                        },
+                                        itemBuilder: (context) {
+                                          final isBanned = data['banned'] == true;
+                                          final isFlagged = data['flagged'] == true;
+                                          final isVerified = data['verified'] == true;
+                                          return [
+                                            if (role == 'ngo') ...[
+                                              PopupMenuItem<String>(
+                                                value: 'edit',
+                                                child: Row(children: [
                                                   const Icon(Icons.edit_outlined, color: AppColors.primary, size: 18),
                                                   const SizedBox(width: 10),
-                                                  Text(
-                                                    'Edit Details',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: AppColors.textPrimary,
-                                                    ),
-                                                  ),
-                                                ],
+                                                  Text('Edit Details', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                                                ]),
                                               ),
-                                            ),
-                                            const PopupMenuDivider(height: 1),
-                                          ],
-                                          if (role == 'donor') ...[
-                                            PopupMenuItem<String>(
-                                              value: isVerified ? 'unverify' : 'verify',
-                                              child: Row(
-                                                children: [
-                                                  Icon(
-                                                    isVerified ? Icons.verified_user : Icons.verified_user_outlined,
-                                                    color: AppColors.secondary,
-                                                    size: 18,
-                                                  ),
+                                              const PopupMenuDivider(height: 1),
+                                            ],
+                                            if (role == 'donor') ...[
+                                              PopupMenuItem<String>(
+                                                value: isVerified ? 'unverify' : 'verify',
+                                                child: Row(children: [
+                                                  Icon(isVerified ? Icons.verified_user : Icons.verified_user_outlined, color: AppColors.secondary, size: 18),
                                                   const SizedBox(width: 10),
-                                                  Text(
-                                                    isVerified ? 'Remove Verification' : 'Verify Donor',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: AppColors.textPrimary,
-                                                    ),
-                                                  ),
-                                                ],
+                                                  Text(isVerified ? 'Remove Verification' : 'Verify Donor', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                                                ]),
                                               ),
-                                            ),
-                                            const PopupMenuDivider(height: 1),
-                                          ],
-                                          PopupMenuItem<String>(
-                                            value: isFlagged ? 'unflag' : 'flag',
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  isFlagged ? Icons.outlined_flag : Icons.flag,
-                                                  color: Colors.orange,
-                                                  size: 18,
-                                                ),
+                                              const PopupMenuDivider(height: 1),
+                                            ],
+                                            PopupMenuItem<String>(
+                                              value: isFlagged ? 'unflag' : 'flag',
+                                              child: Row(children: [
+                                                Icon(isFlagged ? Icons.outlined_flag : Icons.flag, color: Colors.orange, size: 18),
                                                 const SizedBox(width: 10),
-                                                Text(
-                                                  isFlagged ? 'Remove Flag' : 'Flag User',
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: AppColors.textPrimary,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                                Text(isFlagged ? 'Remove Flag' : 'Flag User', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                                              ]),
                                             ),
                                             const PopupMenuDivider(height: 1),
                                             PopupMenuItem<String>(
                                               value: isBanned ? 'unban' : 'ban',
-                                              child: Row(
-                                                children: [
-                                                  Icon(
-                                                    isBanned ? Icons.check_circle_outline : Icons.block,
-                                                    color: isBanned ? AppColors.secondary : AppColors.error,
-                                                    size: 18,
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Text(
-                                                    isBanned ? 'Unban User' : 'Ban User',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: isBanned ? AppColors.secondary : AppColors.error,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                              child: Row(children: [
+                                                Icon(isBanned ? Icons.check_circle_outline : Icons.block, color: isBanned ? AppColors.secondary : AppColors.error, size: 18),
+                                                const SizedBox(width: 10),
+                                                Text(isBanned ? 'Unban User' : 'Ban User', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: isBanned ? AppColors.secondary : AppColors.error)),
+                                              ]),
                                             ),
                                             const PopupMenuDivider(height: 1),
                                             PopupMenuItem<String>(
                                               value: 'remove',
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                    Icons.delete_outline,
-                                                    color: AppColors.error,
-                                                    size: 18,
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Text(
-                                                    'Remove Account',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: AppColors.error,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                              child: Row(children: [
+                                                const Icon(Icons.delete_outline, color: AppColors.error, size: 18),
+                                                const SizedBox(width: 10),
+                                                Text('Remove Account', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.error)),
+                                              ]),
                                             ),
                                           ];
                                         },

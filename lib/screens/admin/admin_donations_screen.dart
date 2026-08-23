@@ -149,9 +149,9 @@ class _AdminDonationsScreenState extends State<AdminDonationsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 64),
                       child: Column(
                         children: [
-                          Icon(Icons.inventory_2_outlined, size: 48, color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                          Icon(Icons.inventory_2_outlined, size: 48, color: colors.textSecondary.withValues(alpha: 0.3)),
                           const SizedBox(height: 12),
-                          Text('No donations found', style: GoogleFonts.inter(color: AppColors.textSecondary)),
+                          Text('No donations found', style: GoogleFonts.inter(color: colors.textSecondary)),
                         ],
                       ),
                     ),

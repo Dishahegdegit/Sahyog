@@ -351,11 +351,13 @@ class AdminReportsScreen extends StatelessWidget {
                     final report = reports[index];
                     return Container(
                       decoration: BoxDecoration(
-                        color: colors.surface,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: colors.outlineVariant),
                       ),
-                      child: ListTile(
+                      child: Material(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         leading: Container(
                           padding: const EdgeInsets.all(10),
@@ -393,7 +395,8 @@ class AdminReportsScreen extends StatelessWidget {
                           tooltip: 'Download PDF',
                         ),
                       ),
-                    );
+                    ),
+                  );
                   },
                 ),
               ),

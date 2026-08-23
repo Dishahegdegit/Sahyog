@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/theme_provider.dart';
 import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/theme_notifier.dart';
@@ -12,16 +14,16 @@ import 'admin_map_screen.dart';
 import 'admin_donations_screen.dart';
 import 'admin_reports_screen.dart';
 import 'admin_notifications_sheet.dart';
-import 'admin_tickets_screen.dart';
+import 'about_app_screen.dart';
 
-class AdminHome extends StatefulWidget {
+class AdminHome extends ConsumerStatefulWidget {
   const AdminHome({super.key});
 
   @override
-  State<AdminHome> createState() => _AdminHomeState();
+  ConsumerState<AdminHome> createState() => _AdminHomeState();
 }
 
-class _AdminHomeState extends State<AdminHome> {
+class _AdminHomeState extends ConsumerState<AdminHome> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -36,26 +38,27 @@ class _AdminHomeState extends State<AdminHome> {
   }
 
   Future<void> _confirmLogout() async {
+    final c = context.colors;
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
+        backgroundColor: c.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: AppColors.outlineVariant),
+          side: BorderSide(color: c.borderLight),
         ),
         title: Text(
           'Confirm Logout',
           style: GoogleFonts.publicSans(
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            color: c.textPrimary,
           ),
         ),
         content: Text(
           'Are you sure you want to log out?',
           style: GoogleFonts.publicSans(
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: c.textSecondary,
           ),
         ),
         actions: [
@@ -65,7 +68,7 @@ class _AdminHomeState extends State<AdminHome> {
               'Cancel',
               style: GoogleFonts.publicSans(
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: c.textSecondary,
               ),
             ),
           ),
@@ -264,9 +267,8 @@ class _AdminHomeState extends State<AdminHome> {
                   subtitle: darkEnabled ? 'Dark theme active' : 'Light theme active',
                   value: darkEnabled,
                   c: c,
-                  onChanged: (val) async {
-                    themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light;
-                    await saveThemePreference(val);
+                  onChanged: (val) {
+                    ref.read(themeModeProvider.notifier).setDark(val);
                   },
                 ),
               ]),
@@ -481,19 +483,13 @@ class _AdminHomeState extends State<AdminHome> {
   // ─── Build ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    ref.watch(themeModeProvider);
     final user = FirebaseAuth.instance.currentUser;
     final String adminName = _resolveAdminName(user);
 
     final screens = [
       AdminDashboardScreen(onNavigate: (i) {
-        if (i == 3) { // Users was index 3
-          Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Manage Users')),
-            body: const AdminUsersScreen(),
-          )));
-        } else {
-          setState(() => _currentIndex = i);
-        }
+        setState(() => _currentIndex = i);
       }),
       const NgoApprovalScreen(),
       const AdminDonationsScreen(),
@@ -564,7 +560,8 @@ class _AdminHomeState extends State<AdminHome> {
             ),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+              Navigator.push(context, MaterialPageRoute(builder: (ctx) => Scaffold(
+                backgroundColor: ctx.colors.background,
                 appBar: AppBar(
                   flexibleSpace: Container(
                     decoration: const BoxDecoration(
@@ -584,30 +581,14 @@ class _AdminHomeState extends State<AdminHome> {
             },
           ),
           ListTile(
-            leading: Icon(Icons.report_gmailerrorred_outlined, color: c.textPrimary),
+            leading: Icon(Icons.info_outline_rounded, color: c.textPrimary),
             title: Text(
-              'Issue Tickets',
+              'About App',
               style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary),
             ),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
-                appBar: AppBar(
-                  flexibleSpace: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppColors.primary, Color(0xFFFF8C5A)],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                    ),
-                  ),
-                  elevation: 0,
-                  iconTheme: const IconThemeData(color: Colors.white),
-                  title: Text('Issue Tickets', style: GoogleFonts.publicSans(fontWeight: FontWeight.w700, color: Colors.white)),
-                ),
-                body: const AdminTicketsScreen(),
-              )));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutAppScreen()));
             },
           ),
           ListTile(
@@ -618,7 +599,8 @@ class _AdminHomeState extends State<AdminHome> {
             ),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+              Navigator.push(context, MaterialPageRoute(builder: (ctx) => Scaffold(
+                backgroundColor: ctx.colors.background,
                 appBar: AppBar(
                   flexibleSpace: Container(
                     decoration: const BoxDecoration(

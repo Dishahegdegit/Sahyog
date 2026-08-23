@@ -96,8 +96,15 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
 
   Future<void> _approveUser(String uid, String role) async {
     final db = FirebaseFirestore.instance;
-    final updateData = role == 'ngo' ? {'status': 'approved'} : {'verified': true};
+    final updateData = role == 'ngo'
+        ? {'status': 'approved', 'verified': true}
+        : {'verified': true, 'status': 'approved'};
     await db.collection('users').doc(uid).update(updateData);
+    if (role == 'ngo') {
+      try {
+        await db.collection('ngos').doc(uid).set({'status': 'approved', 'verified': true}, SetOptions(merge: true));
+      } catch (_) {}
+    }
     
     // Send Notification
     await db.collection('notifications').add({
@@ -116,8 +123,15 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
 
   Future<void> _rejectUser(String uid, String role) async {
     final db = FirebaseFirestore.instance;
-    final updateData = role == 'ngo' ? {'status': 'rejected'} : {'verified': false};
+    final updateData = role == 'ngo'
+        ? {'status': 'rejected', 'verified': false}
+        : {'verified': false, 'status': 'rejected'};
     await db.collection('users').doc(uid).update(updateData);
+    if (role == 'ngo') {
+      try {
+        await db.collection('ngos').doc(uid).set({'status': 'rejected', 'verified': false}, SetOptions(merge: true));
+      } catch (_) {}
+    }
 
     // Send Notification
     await db.collection('notifications').add({
@@ -135,8 +149,16 @@ class _NgoApprovalScreenState extends State<NgoApprovalScreen> {
   }
 
   Future<void> _markPendingUser(String uid, String role) async {
-    final updateData = role == 'ngo' ? {'status': 'pending'} : {'verified': false};
-    await FirebaseFirestore.instance.collection('users').doc(uid).update(updateData);
+    final db = FirebaseFirestore.instance;
+    final updateData = role == 'ngo'
+        ? {'status': 'pending', 'verified': false}
+        : {'verified': false, 'status': 'pending'};
+    await db.collection('users').doc(uid).update(updateData);
+    if (role == 'ngo') {
+      try {
+        await db.collection('ngos').doc(uid).set({'status': 'pending', 'verified': false}, SetOptions(merge: true));
+      } catch (_) {}
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       _snackBar('${role.toUpperCase()} marked as pending', AppColors.tertiary),
@@ -501,16 +523,9 @@ class _NgoCard extends StatelessWidget {
           statusText = 'PENDING';
       }
     } else {
-      // Donor "Verified" logic
-      final bool isVerified = item.status == 'true' || item.status == 'approved'; // Need to check how 'verified' field was passed
-      // Wait, NgoApprovalItem.fromMap uses 'status' field.
-      // But for donors, it's 'verified' (bool).
-      // Let's re-examine NgoApprovalItem.fromMap.
-      // It does: status: map['status'] ?? 'pending'
-      // For donors, we should probably pass the 'verified' field as status.
-
-      statusColor = item.status == 'true' || item.status == 'approved' ? AppColors.secondary : AppColors.tertiary;
-      statusText = item.status == 'true' || item.status == 'approved' ? 'VERIFIED' : 'UNVERIFIED';
+      final bool isVerified = item.status == 'true' || item.status == 'approved';
+      statusColor = isVerified ? AppColors.secondary : AppColors.tertiary;
+      statusText = isVerified ? 'VERIFIED' : 'UNVERIFIED';
     }
 
     return Container(

@@ -639,47 +639,49 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   Widget _buildPreferencesCard() {
     final c = context.colors;
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: c.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: c.outlineVariant),
       ),
       child: Material(
-        color: Colors.transparent,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Donor Preferences',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
-            ),
-            Divider(color: c.outlineVariant, height: 20),
-
-            ListTile(
-              title: Text('Default Food Category', style: TextStyle(color: c.textPrimary)),
-              trailing: DropdownButton<String>(
-                value: _defaultFoodType,
-                dropdownColor: c.surface,
-                items: ['Veg', 'Non-Veg'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _defaultFoodType = v!),
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Donor Preferences',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
               ),
-            ),
-            SwitchListTile(
-              activeTrackColor: AppColors.primaryTint,
-              activeThumbColor: AppColors.primary,
-              title: Text('Notify on Volunteer Pickup', style: TextStyle(color: c.textPrimary)),
-              value: _notifyOnPickup,
-              onChanged: (v) => setState(() => _notifyOnPickup = v),
-            ),
-            SwitchListTile(
-              activeTrackColor: AppColors.primaryTint,
-              activeThumbColor: AppColors.primary,
-              title: Text('Notify on Delivery Completion', style: TextStyle(color: c.textPrimary)),
-              value: _notifyOnDelivery,
-              onChanged: (v) => setState(() => _notifyOnDelivery = v),
-            ),
-          ],
+              Divider(color: c.outlineVariant, height: 20),
+
+              ListTile(
+                title: Text('Default Food Category', style: TextStyle(color: c.textPrimary)),
+                trailing: DropdownButton<String>(
+                  value: _defaultFoodType,
+                  dropdownColor: c.surface,
+                  items: ['Veg', 'Non-Veg'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (v) => setState(() => _defaultFoodType = v!),
+                ),
+              ),
+              SwitchListTile(
+                activeTrackColor: AppColors.primaryTint,
+                activeThumbColor: AppColors.primary,
+                title: Text('Notify on Volunteer Pickup', style: TextStyle(color: c.textPrimary)),
+                value: _notifyOnPickup,
+                onChanged: (v) => setState(() => _notifyOnPickup = v),
+              ),
+              SwitchListTile(
+                activeTrackColor: AppColors.primaryTint,
+                activeThumbColor: AppColors.primary,
+                title: Text('Notify on Delivery Completion', style: TextStyle(color: c.textPrimary)),
+                value: _notifyOnDelivery,
+                onChanged: (v) => setState(() => _notifyOnDelivery = v),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -691,42 +693,47 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
       builder: (context, ref, _) {
         final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
         return Container(
-          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: c.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: c.outlineVariant),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Appearance',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
+          child: Material(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Appearance',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
+                  ),
+                  Divider(color: c.outlineVariant, height: 20),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    activeTrackColor: AppColors.primaryTint,
+                    activeThumbColor: AppColors.primary,
+                    secondary: Icon(
+                      isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                      color: AppColors.primary,
+                    ),
+                    title: Text(
+                      isDark ? 'Dark theme' : 'Light theme',
+                      style: TextStyle(fontWeight: FontWeight.w700, color: c.textPrimary),
+                    ),
+                    subtitle: Text(
+                      isDark ? 'Using dark mode' : 'Using light mode',
+                      style: TextStyle(color: c.textSecondary, fontSize: 12),
+                    ),
+                    value: isDark,
+                    onChanged: (enabled) {
+                      ref.read(themeModeProvider.notifier).setDark(enabled);
+                    },
+                  ),
+                ],
               ),
-              Divider(color: c.outlineVariant, height: 20),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                activeTrackColor: AppColors.primaryTint,
-                activeThumbColor: AppColors.primary,
-                secondary: Icon(
-                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                  color: AppColors.primary,
-                ),
-                title: Text(
-                  isDark ? 'Dark theme' : 'Light theme',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: c.textPrimary),
-                ),
-                subtitle: Text(
-                  isDark ? 'Using dark mode' : 'Using light mode',
-                  style: TextStyle(color: c.textSecondary, fontSize: 12),
-                ),
-                value: isDark,
-                onChanged: (enabled) {
-                  ref.read(themeModeProvider.notifier).setDark(enabled);
-                },
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -736,44 +743,46 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   Widget _buildSavedLocationsCard() {
     final c = context.colors;
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: c.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: c.outlineVariant),
       ),
       child: Material(
-        color: Colors.transparent,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Saved Pickup Locations',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add, color: AppColors.primary),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Address management feature ready!')),
-                    );
-                  },
-                ),
-              ],
-            ),
-            Divider(color: c.outlineVariant, height: 20),
-            ListTile(
-              leading: const Icon(Icons.home, color: AppColors.primary),
-              title: Text('Primary Address', style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary)),
-              subtitle: Text(
-                _addressController.text.isNotEmpty ? _addressController.text : 'No address saved yet',
-                style: TextStyle(color: c.textSecondary),
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Saved Pickup Locations',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add, color: AppColors.primary),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Address management feature ready!')),
+                      );
+                    },
+                  ),
+                ],
               ),
-            ),
-          ],
+              Divider(color: c.outlineVariant, height: 20),
+              ListTile(
+                leading: const Icon(Icons.home, color: AppColors.primary),
+                title: Text('Primary Address', style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary)),
+                subtitle: Text(
+                  _addressController.text.isNotEmpty ? _addressController.text : 'No address saved yet',
+                  style: TextStyle(color: c.textSecondary),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

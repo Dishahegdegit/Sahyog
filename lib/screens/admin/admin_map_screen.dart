@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../constants/app_colors.dart';
+import '../../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 //  Data models
@@ -146,14 +147,17 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   }
 
   // ─── Geocoding ─────────────────────────────────────────────────
-  Future<LatLng> _resolve(String address, String uid) async {
-    final clean = address.trim().toLowerCase();
-    if (clean.isEmpty) return _offset(_defaultCenter, uid);
-    for (final e in _knownLocations.entries) {
-      if (clean.contains(e.key)) return _offset(e.value, uid);
+  // ─── Geocoding ─────────────────────────────────────────────────
+  Future<LatLng> _resolve(String address, String uid, {double? lat, double? lng}) async {
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      return LatLng(lat, lng);
     }
+    final clean = address.trim();
+    if (clean.isEmpty) return _offset(_defaultCenter, uid);
+
     try {
-      final q = Uri.encodeComponent('$address, Mumbai, India');
+      final queryStr = clean.toLowerCase().contains('india') ? clean : '$clean, India';
+      final q = Uri.encodeComponent(queryStr);
       final url = Uri.parse(
           'https://nominatim.openstreetmap.org/search?q=$q&format=json&limit=1');
       final res = await http
@@ -167,6 +171,12 @@ class _AdminMapScreenState extends State<AdminMapScreen>
         }
       }
     } catch (_) {}
+
+    final cleanLower = clean.toLowerCase();
+    for (final e in _knownLocations.entries) {
+      if (cleanLower.contains(e.key)) return _offset(e.value, uid);
+    }
+
     return _offset(_defaultCenter, uid);
   }
 
@@ -199,7 +209,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
         final d = doc.data();
         if ((d['status'] ?? 'pending') != 'approved') continue;
         final address = d['address'] ?? d['officialAddress'] ?? '';
-        final pos = await _resolve(address, doc.id);
+        final double? lat = (d['latitude'] ?? d['lat']) is num ? (d['latitude'] ?? d['lat']).toDouble() : null;
+        final double? lng = (d['longitude'] ?? d['lng']) is num ? (d['longitude'] ?? d['lng']).toDouble() : null;
+        final pos = await _resolve(address, doc.id, lat: lat, lng: lng);
         _ngos.add(_NgoPoint(
           id: 'ngo_${doc.id}',
           name: d['name'] ?? d['organizationName'] ?? 'Approved NGO',
@@ -216,7 +228,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
         final d = doc.data();
         final status = d['status'] ?? 'Available';
         final workingArea = d['workingArea'] ?? d['area'] ?? '';
-        final pos = await _resolve(workingArea, doc.id);
+        final double? lat = (d['latitude'] ?? d['lat']) is num ? (d['latitude'] ?? d['lat']).toDouble() : null;
+        final double? lng = (d['longitude'] ?? d['lng']) is num ? (d['longitude'] ?? d['lng']).toDouble() : null;
+        final pos = await _resolve(workingArea, doc.id, lat: lat, lng: lng);
 
         String pickup = d['pickupAddress'] ?? d['pickup'] ?? '';
         String destination = d['destinationAddress'] ?? d['destination'] ?? '';
@@ -260,7 +274,10 @@ class _AdminMapScreenState extends State<AdminMapScreen>
       }
     }
 
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() => _isLoading = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fitAll());
+    }
   }
 
   // ─── Filtered lists ─────────────────────────────────────────────
@@ -341,19 +358,20 @@ class _AdminMapScreenState extends State<AdminMapScreen>
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     final int ngoCount = _ngos.length;
     final int volCount = _volunteers.length;
     final int activeDel = _volunteers.where((v) => v.deliveryStatus == 'On Delivery').length;
     final int availCount = _volunteers.where((v) => v.deliveryStatus == 'Available').length;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: _buildMapStack(ngoCount, volCount, activeDel, availCount),
+      backgroundColor: colors.background,
+      body: _buildMapStack(colors, ngoCount, volCount, activeDel, availCount),
     );
   }
 
   // ─── Main map stack ─────────────────────────────────────────────
-  Widget _buildMapStack(int ngoCount, int volCount, int activeDel, int availCount) {
+  Widget _buildMapStack(AppColorSet colors, int ngoCount, int volCount, int activeDel, int availCount) {
     final ngoMarkers = _filteredNgos.map((n) => Marker(
       point: n.position,
       width: 44,
@@ -385,6 +403,11 @@ class _AdminMapScreenState extends State<AdminMapScreen>
       );
     }).toList();
 
+    // Auto select dark tile style if dark theme is active and style hasn't been manually toggled
+    final effectiveTileUrl = colors.isDark && _tileStyle == 0
+        ? _tileUrls[1]
+        : _tileUrls[_tileStyle];
+
     return Stack(
       children: [
         // ── Real Map ──
@@ -404,7 +427,7 @@ class _AdminMapScreenState extends State<AdminMapScreen>
           ),
           children: [
             TileLayer(
-              urlTemplate: _tileUrls[_tileStyle],
+              urlTemplate: effectiveTileUrl,
               userAgentPackageName: 'com.sahyog.app',
               retinaMode: MediaQuery.devicePixelRatioOf(context) > 1.0,
             ),
@@ -417,19 +440,19 @@ class _AdminMapScreenState extends State<AdminMapScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Stats chips (shown on both web and mobile now)
+              // Stats chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Row(
                   children: [
-                    _StatChip(label: 'NGOs', value: '$ngoCount', icon: Icons.shield_rounded, color: Colors.orange),
+                    _StatChip(label: 'NGOs', value: '$ngoCount', icon: Icons.shield_rounded, color: Colors.orange, colors: colors),
                     const SizedBox(width: 8),
-                    _StatChip(label: 'Volunteers', value: '$volCount', icon: Icons.people_rounded, color: Colors.green),
+                    _StatChip(label: 'Volunteers', value: '$volCount', icon: Icons.people_rounded, color: Colors.green, colors: colors),
                     const SizedBox(width: 8),
-                    _StatChip(label: 'On Delivery', value: '$activeDel', icon: Icons.local_shipping_rounded, color: Colors.blue),
+                    _StatChip(label: 'On Delivery', value: '$activeDel', icon: Icons.local_shipping_rounded, color: Colors.blue, colors: colors),
                     const SizedBox(width: 8),
-                    _StatChip(label: 'Available', value: '$availCount', icon: Icons.check_circle_rounded, color: Colors.teal),
+                    _StatChip(label: 'Available', value: '$availCount', icon: Icons.check_circle_rounded, color: Colors.teal, colors: colors),
                   ],
                 ),
               ),
@@ -443,21 +466,22 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                       child: Container(
                         height: 50,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: colors.surface,
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
                           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 12, offset: const Offset(0, 4))],
                         ),
                         child: TextField(
                           controller: _searchController,
                           onChanged: (val) => setState(() => _searchQuery = val),
-                          style: GoogleFonts.inter(fontSize: 14),
+                          style: GoogleFonts.inter(fontSize: 14, color: colors.textPrimary),
                           decoration: InputDecoration(
                             hintText: 'Search NGOs, volunteers, areas…',
-                            hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-                            prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+                            hintStyle: GoogleFonts.inter(fontSize: 13, color: colors.textHint),
+                            prefixIcon: Icon(Icons.search, color: colors.textSecondary, size: 20),
                             suffixIcon: _searchQuery.isNotEmpty
                                 ? IconButton(
-                                    icon: const Icon(Icons.close, size: 18),
+                                    icon: Icon(Icons.close, size: 18, color: colors.textSecondary),
                                     onPressed: () {
                                       _searchController.clear();
                                       setState(() => _searchQuery = '');
@@ -479,11 +503,12 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
-                          color: _showFilters ? AppColors.primary : Colors.white,
+                          color: _showFilters ? AppColors.primary : colors.surface,
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
                           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 12, offset: const Offset(0, 4))],
                         ),
-                        child: Icon(Icons.filter_list_rounded, color: _showFilters ? Colors.white : AppColors.textPrimary, size: 22),
+                        child: Icon(Icons.filter_list_rounded, color: _showFilters ? Colors.white : colors.textPrimary, size: 22),
                       ),
                     ),
                   ],
@@ -494,11 +519,14 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: Card(
-                    color: Colors.white,
+                    color: colors.surface,
                     surfaceTintColor: Colors.transparent,
                     elevation: 8,
-                    shadowColor: Colors.black.withValues(alpha: 0.14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shadowColor: Colors.black.withValues(alpha: 0.20),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: colors.outlineVariant),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(14),
                       child: Column(
@@ -507,7 +535,7 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('ENTITY TYPE', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.6)),
+                              Text('ENTITY TYPE', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: colors.textSecondary, letterSpacing: 0.6)),
                               GestureDetector(
                                 onTap: () => setState(() { _filterNgos = true; _filterVolunteers = true; _filterAvailable = true; _filterOnDelivery = true; _filterOffline = false; }),
                                 child: Text('Reset all', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
@@ -516,16 +544,58 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                           ),
                           const SizedBox(height: 8),
                           Wrap(spacing: 8, children: [
-                            FilterChip(label: const Text('NGOs'), avatar: const Icon(Icons.shield_outlined, size: 14), selected: _filterNgos, onSelected: (v) => setState(() => _filterNgos = v), selectedColor: Colors.orange.withValues(alpha: 0.15), checkmarkColor: Colors.orange),
-                            FilterChip(label: const Text('Volunteers'), avatar: const Icon(Icons.delivery_dining_outlined, size: 14), selected: _filterVolunteers, onSelected: (v) => setState(() => _filterVolunteers = v), selectedColor: Colors.blue.withValues(alpha: 0.15), checkmarkColor: Colors.blue),
+                            FilterChip(
+                              label: Text('NGOs', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                              avatar: const Icon(Icons.shield_outlined, size: 14, color: Colors.orange),
+                              selected: _filterNgos,
+                              onSelected: (v) => setState(() => _filterNgos = v),
+                              backgroundColor: colors.surfaceContainerLow,
+                              selectedColor: Colors.orange.withValues(alpha: 0.25),
+                              checkmarkColor: Colors.orange,
+                              side: BorderSide(color: _filterNgos ? Colors.orange : colors.outlineVariant),
+                            ),
+                            FilterChip(
+                              label: Text('Volunteers', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                              avatar: const Icon(Icons.delivery_dining_outlined, size: 14, color: Colors.blue),
+                              selected: _filterVolunteers,
+                              onSelected: (v) => setState(() => _filterVolunteers = v),
+                              backgroundColor: colors.surfaceContainerLow,
+                              selectedColor: Colors.blue.withValues(alpha: 0.25),
+                              checkmarkColor: Colors.blue,
+                              side: BorderSide(color: _filterVolunteers ? Colors.blue : colors.outlineVariant),
+                            ),
                           ]),
-                          const Divider(height: 14, thickness: 0.8),
-                          Text('VOLUNTEER STATUS', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.6)),
+                          Divider(height: 14, thickness: 0.8, color: colors.outlineVariant),
+                          Text('VOLUNTEER STATUS', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: colors.textSecondary, letterSpacing: 0.6)),
                           const SizedBox(height: 6),
                           Wrap(spacing: 8, children: [
-                            FilterChip(label: const Text('Available'), selected: _filterAvailable, onSelected: (v) => setState(() => _filterAvailable = v), selectedColor: Colors.green.withValues(alpha: 0.15), checkmarkColor: Colors.green),
-                            FilterChip(label: const Text('On Delivery'), selected: _filterOnDelivery, onSelected: (v) => setState(() => _filterOnDelivery = v), selectedColor: Colors.blue.withValues(alpha: 0.15), checkmarkColor: Colors.blue),
-                            FilterChip(label: const Text('Offline'), selected: _filterOffline, onSelected: (v) => setState(() => _filterOffline = v), selectedColor: Colors.grey.withValues(alpha: 0.15), checkmarkColor: Colors.grey),
+                            FilterChip(
+                              label: Text('Available', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                              selected: _filterAvailable,
+                              onSelected: (v) => setState(() => _filterAvailable = v),
+                              backgroundColor: colors.surfaceContainerLow,
+                              selectedColor: Colors.green.withValues(alpha: 0.25),
+                              checkmarkColor: Colors.green,
+                              side: BorderSide(color: _filterAvailable ? Colors.green : colors.outlineVariant),
+                            ),
+                            FilterChip(
+                              label: Text('On Delivery', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                              selected: _filterOnDelivery,
+                              onSelected: (v) => setState(() => _filterOnDelivery = v),
+                              backgroundColor: colors.surfaceContainerLow,
+                              selectedColor: Colors.blue.withValues(alpha: 0.25),
+                              checkmarkColor: Colors.blue,
+                              side: BorderSide(color: _filterOnDelivery ? Colors.blue : colors.outlineVariant),
+                            ),
+                            FilterChip(
+                              label: Text('Offline', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: colors.textPrimary)),
+                              selected: _filterOffline,
+                              onSelected: (v) => setState(() => _filterOffline = v),
+                              backgroundColor: colors.surfaceContainerLow,
+                              selectedColor: Colors.grey.withValues(alpha: 0.25),
+                              checkmarkColor: Colors.grey,
+                              side: BorderSide(color: _filterOffline ? Colors.grey : colors.outlineVariant),
+                            ),
                           ]),
                         ],
                       ),
@@ -538,9 +608,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
 
         // ── Bottom Detail Card ──
         if (_selectedVolunteer != null)
-          Positioned(bottom: 16, left: 16, right: 16, child: _buildVolunteerCard(_selectedVolunteer!)),
+          Positioned(bottom: 16, left: 16, right: 16, child: _buildVolunteerCard(_selectedVolunteer!, colors)),
         if (_selectedNgo != null)
-          Positioned(bottom: 16, left: 16, right: 16, child: _buildNgoCard(_selectedNgo!)),
+          Positioned(bottom: 16, left: 16, right: 16, child: _buildNgoCard(_selectedNgo!, colors)),
 
         // ── Floating Action Buttons ──
         Positioned(
@@ -549,13 +619,13 @@ class _AdminMapScreenState extends State<AdminMapScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _MapBtn(icon: Icons.layers_rounded, onTap: () => setState(() => _tileStyle = (_tileStyle + 1) % _tileUrls.length), tooltip: _tileLabels[(_tileStyle + 1) % _tileLabels.length]),
+              _MapBtn(icon: Icons.layers_rounded, onTap: () => setState(() => _tileStyle = (_tileStyle + 1) % _tileUrls.length), tooltip: _tileLabels[(_tileStyle + 1) % _tileLabels.length], colors: colors),
               const SizedBox(height: 8),
-              _MapBtn(icon: Icons.center_focus_strong_rounded, onTap: _fitAll, tooltip: 'Fit all'),
+              _MapBtn(icon: Icons.center_focus_strong_rounded, onTap: _fitAll, tooltip: 'Fit all', colors: colors),
               const SizedBox(height: 8),
-              _MapBtn(icon: Icons.my_location_rounded, onTap: () => _mapController.move(_defaultCenter, 12.0), tooltip: 'Mumbai'),
+              _MapBtn(icon: Icons.my_location_rounded, onTap: () => _mapController.move(_defaultCenter, 12.0), tooltip: 'Mumbai', colors: colors),
               const SizedBox(height: 8),
-              _MapBtn(icon: Icons.refresh_rounded, onTap: _loadAll, tooltip: 'Refresh'),
+              _MapBtn(icon: Icons.refresh_rounded, onTap: _loadAll, tooltip: 'Refresh', colors: colors),
             ],
           ),
         ),
@@ -566,13 +636,13 @@ class _AdminMapScreenState extends State<AdminMapScreen>
           left: 12,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: colors.surface.withValues(alpha: 0.90), borderRadius: BorderRadius.circular(8), border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.5))),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.map_outlined, size: 12, color: AppColors.textSecondary),
+                Icon(Icons.map_outlined, size: 12, color: colors.textSecondary),
                 const SizedBox(width: 4),
-                Text('© OpenStreetMap contributors', style: GoogleFonts.inter(fontSize: 9, color: AppColors.textSecondary)),
+                Text('© OpenStreetMap contributors', style: GoogleFonts.inter(fontSize: 9, color: colors.textSecondary)),
               ],
             ),
           ),
@@ -589,13 +659,16 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   }
 
   // ─── Volunteer Detail Card ──────────────────────────────────────
-  Widget _buildVolunteerCard(_VolunteerPoint v) {
+  Widget _buildVolunteerCard(_VolunteerPoint v, AppColorSet colors) {
     final bool isOnDel = v.deliveryStatus == 'On Delivery';
     return Card(
       elevation: 14,
-      color: Colors.white,
+      color: colors.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 14, 20),
         child: Column(
@@ -618,33 +691,56 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(v.name, style: GoogleFonts.publicSans(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (isOnDel ? Colors.blue : Colors.green).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'VOLUNTEER',
+                              style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: isOnDel ? Colors.blue : Colors.green),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              v.name,
+                              style: GoogleFonts.publicSans(fontSize: 15, fontWeight: FontWeight.w800, color: colors.textPrimary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 3),
                       Row(children: [
                         Container(width: 7, height: 7, decoration: BoxDecoration(color: isOnDel ? Colors.blue : Colors.green, shape: BoxShape.circle)),
                         const SizedBox(width: 5),
                         Text(v.deliveryStatus, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: isOnDel ? Colors.blue : Colors.green)),
                         const SizedBox(width: 5),
-                        Flexible(child: Text('· ${v.workingArea}', overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary))),
+                        Flexible(child: Text('· Area: ${v.workingArea}', overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, color: colors.textSecondary))),
                       ]),
                     ],
                   ),
                 ),
                 SizedBox(
                   width: 32, height: 32,
-                  child: IconButton(padding: EdgeInsets.zero, icon: const Icon(Icons.close, size: 18), color: AppColors.textSecondary, onPressed: () => setState(() => _selectedVolunteer = null)),
+                  child: IconButton(padding: EdgeInsets.zero, icon: const Icon(Icons.close, size: 18), color: colors.textSecondary, onPressed: () => setState(() => _selectedVolunteer = null)),
                 ),
               ],
             ),
             if (isOnDel) ...[
               const SizedBox(height: 14),
               Row(children: [
-                Expanded(child: _RouteEndpoint(label: 'PICKUP', address: v.pickupAddress, isStart: true)),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.textSecondary),
+                Expanded(child: _RouteEndpoint(label: 'PICKUP', address: v.pickupAddress, isStart: true, colors: colors)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.arrow_forward_rounded, size: 18, color: colors.textSecondary),
                 ),
-                Expanded(child: _RouteEndpoint(label: 'DESTINATION', address: v.destinationAddress, isStart: false)),
+                Expanded(child: _RouteEndpoint(label: 'DESTINATION', address: v.destinationAddress, isStart: false, colors: colors)),
               ]),
               if (v.donationItem != 'Not specified') ...[
                 const SizedBox(height: 10),
@@ -654,7 +750,7 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.inventory_2_outlined, size: 14, color: AppColors.primary),
                     const SizedBox(width: 6),
-                    Text(v.donationItem, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                    Text('Item: ${v.donationItem}', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
                   ]),
                 ),
               ],
@@ -672,7 +768,7 @@ class _AdminMapScreenState extends State<AdminMapScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.textPrimary, side: const BorderSide(color: Color(0xFFE0E0E0)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 13)),
+                  style: OutlinedButton.styleFrom(foregroundColor: colors.textPrimary, side: BorderSide(color: colors.outlineVariant), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 13)),
                   onPressed: () => _mapController.move(v.position, 15.0),
                   icon: const Icon(Icons.route_rounded, size: 16),
                   label: Text('Focus', style: GoogleFonts.publicSans(fontWeight: FontWeight.bold)),
@@ -686,12 +782,15 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   }
 
   // ─── NGO Detail Card ────────────────────────────────────────────
-  Widget _buildNgoCard(_NgoPoint n) {
+  Widget _buildNgoCard(_NgoPoint n, AppColorSet colors) {
     return Card(
       elevation: 14,
-      color: Colors.white,
+      color: colors.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 14, 20),
         child: Column(
@@ -711,19 +810,42 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(n.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.publicSans(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'NGO HUB',
+                              style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.orange),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              n.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.publicSans(fontSize: 15, fontWeight: FontWeight.w800, color: colors.textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 3),
                       Row(children: [
                         Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
                         const SizedBox(width: 5),
-                        Text('Active Hub · Verified', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green)),
+                        Text('Active Hub · Verified Partner', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green)),
                       ]),
                     ],
                   ),
                 ),
                 SizedBox(
                   width: 32, height: 32,
-                  child: IconButton(padding: EdgeInsets.zero, icon: const Icon(Icons.close, size: 18), color: AppColors.textSecondary, onPressed: () => setState(() => _selectedNgo = null)),
+                  child: IconButton(padding: EdgeInsets.zero, icon: const Icon(Icons.close, size: 18), color: colors.textSecondary, onPressed: () => setState(() => _selectedNgo = null)),
                 ),
               ],
             ),
@@ -731,9 +853,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.location_on_rounded, size: 15, color: AppColors.textSecondary),
+                Icon(Icons.location_on_rounded, size: 15, color: colors.textSecondary),
                 const SizedBox(width: 6),
-                Expanded(child: Text(n.address, style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary))),
+                Expanded(child: Text(n.address, style: GoogleFonts.inter(fontSize: 12, color: colors.textSecondary))),
               ],
             ),
             const SizedBox(height: 16),
@@ -825,7 +947,8 @@ class _RouteEndpoint extends StatelessWidget {
   final String label;
   final String address;
   final bool isStart;
-  const _RouteEndpoint({required this.label, required this.address, required this.isStart});
+  final AppColorSet colors;
+  const _RouteEndpoint({required this.label, required this.address, required this.isStart, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -842,9 +965,9 @@ class _RouteEndpoint extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.8)),
+              Text(label, style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: colors.textSecondary, letterSpacing: 0.8)),
               const SizedBox(height: 2),
-              Text(address, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text(address, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: colors.textPrimary)),
             ],
           ),
         ),
@@ -858,7 +981,8 @@ class _MapBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
-  const _MapBtn({required this.icon, required this.onTap, required this.tooltip});
+  final AppColorSet colors;
+  const _MapBtn({required this.icon, required this.onTap, required this.tooltip, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -869,11 +993,12 @@ class _MapBtn extends StatelessWidget {
         child: Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: colors.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 3))],
           ),
-          child: Icon(icon, size: 20, color: AppColors.textPrimary),
+          child: Icon(icon, size: 20, color: colors.textPrimary),
         ),
       ),
     );
@@ -886,15 +1011,17 @@ class _StatChip extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
-  const _StatChip({required this.label, required this.value, required this.icon, required this.color});
+  final AppColorSet colors;
+  const _StatChip({required this.label, required this.value, required this.icon, required this.color, required this.colors});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Row(
@@ -906,8 +1033,8 @@ class _StatChip extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(value, style: GoogleFonts.publicSans(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary, height: 1.1)),
-              Text(label, style: GoogleFonts.inter(fontSize: 9, color: AppColors.textSecondary, height: 1.1)),
+              Text(value, style: GoogleFonts.publicSans(fontSize: 13, fontWeight: FontWeight.w800, color: colors.textPrimary, height: 1.1)),
+              Text(label, style: GoogleFonts.inter(fontSize: 9, color: colors.textSecondary, height: 1.1)),
             ],
           ),
         ],
