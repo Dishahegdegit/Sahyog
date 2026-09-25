@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../models/ngo/volunteer_model.dart';
 import '../../services/firestore_service.dart';
-import '../../services/app_notifications.dart';
+
 import '../../utils/page_limits.dart';
 
 class VolunteerMgmtScreen extends StatefulWidget {
@@ -107,8 +107,8 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
               unselectedLabelColor: t.textSecondary,
               labelStyle: GoogleFonts.publicSans(fontWeight: FontWeight.w700, fontSize: 13),
               tabs: const [
-                Tab(text: 'VOLUNTEER TEAM'),
                 Tab(text: 'ASSIGN PICKUPS'),
+                Tab(text: 'VOLUNTEER TEAM'),
               ],
             ),
           ),
@@ -118,15 +118,16 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
+                // Sub-Tab 1: Accepted Donations Needing Volunteer Assignment
+                _buildAssignmentSection(),
+
+                // Sub-Tab 2: Volunteer List & Search
                 Column(
                   children: [
                     _buildVolunteerSearchBar(),
                     Expanded(child: _buildVolunteerListSection()),
                   ],
                 ),
-
-                // Sub-Tab 2: Accepted Donations Needing Volunteer Assignment
-                _buildAssignmentSection(),
               ],
             ),
           ),
@@ -159,7 +160,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: AppColors.secondaryContainer,
+            backgroundColor: const Color(0xFF1E1E1E),
             content: Text(
               'Volunteer ${vol.name} marked as Available!',
               style: GoogleFonts.publicSans(color: Colors.white),
@@ -179,268 +180,10 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
     }
   }
 
-  Future<void> _updateVolunteerPickupStatus(DonationModel donation, String newStatus) async {
-    try {
-      final db = FirebaseFirestore.instance;
-      // 1. Update Donation Status
-      await db.collection('donations').doc(donation.id).update({
-        'status': newStatus,
-      });
 
-      // 2. Add notification for donor
-      if (donation.donorId.isNotEmpty) {
-        await AppNotifications.send(
-          userId: donation.donorId,
-          donationId: donation.id,
-          title: newStatus == 'Picked Up' ? 'Food Picked Up' : 'Food Delivered',
-          body: newStatus == 'Picked Up'
-              ? 'Your food donation is on its way to the NGO!'
-              : 'Thank you! Your donation has been successfully delivered.',
-          status: newStatus,
-        );
-      }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.secondaryContainer,
-            content: Text(
-              'Pickup status marked as $newStatus!',
-              style: GoogleFonts.publicSans(color: Colors.white),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.error,
-            content: Text('Failed to update status: $e'),
-          ),
-        );
-      }
-    }
-  }
 
-  void _showMgmtDistributionDialog(VolunteerModel vol, DonationModel donation) {
-    final foodCtrl = TextEditingController(text: donation.quantity);
-    final beneficiariesCtrl = TextEditingController(
-      text: donation.servesCount > 0 ? donation.servesCount.toString() : '',
-    );
-    final locationCtrl = TextEditingController(text: donation.pickupLocation);
 
-    DateTime selectedDate = DateTime.now();
-    final dateCtrl = TextEditingController(
-      text: DateFormat('yyyy-MM-dd').format(selectedDate),
-    );
-
-    final formKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: t.surfaceContainerLow,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(
-                'Record Food Distribution',
-                style: GoogleFonts.publicSans(
-                  fontWeight: FontWeight.w700,
-                  color: t.textPrimary,
-                ),
-              ),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Please record the distribution details to complete this delivery.',
-                        style: GoogleFonts.publicSans(
-                          fontSize: 13,
-                          color: t.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Food Delivered (quantity)
-                      TextFormField(
-                        controller: foodCtrl,
-                        style: GoogleFonts.publicSans(color: t.textPrimary),
-                        decoration: const InputDecoration(
-                          labelText: 'Food Delivered (Quantity) *',
-                          prefixIcon: Icon(Icons.scale_outlined, size: 20),
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty ? 'Enter food quantity' : null,
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Number of Beneficiaries Served
-                      TextFormField(
-                        controller: beneficiariesCtrl,
-                        keyboardType: TextInputType.number,
-                        style: GoogleFonts.publicSans(color: t.textPrimary),
-                        decoration: const InputDecoration(
-                          labelText: 'Number of Beneficiaries Served *',
-                          prefixIcon: Icon(Icons.people_outline, size: 20),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Enter number of beneficiaries';
-                          if (int.tryParse(v.trim()) == null) return 'Enter a valid integer';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Delivery Location
-                      TextFormField(
-                        controller: locationCtrl,
-                        style: GoogleFonts.publicSans(color: t.textPrimary),
-                        decoration: const InputDecoration(
-                          labelText: 'Delivery Location *',
-                          prefixIcon: Icon(Icons.location_on_outlined, size: 20),
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty ? 'Enter delivery location' : null,
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Delivery Date
-                      TextFormField(
-                        controller: dateCtrl,
-                        readOnly: true,
-                        style: GoogleFonts.publicSans(color: t.textPrimary),
-                        decoration: InputDecoration(
-                          labelText: 'Delivery Date *',
-                          prefixIcon: const Icon(Icons.calendar_today_outlined, size: 20),
-                          suffixIcon: IconButton(
-                            icon: Icon(Icons.date_range, color: t.primary),
-                            onPressed: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: selectedDate,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                              );
-                              if (picked != null) {
-                                setDialogState(() {
-                                  selectedDate = picked;
-                                  dateCtrl.text = DateFormat('yyyy-MM-dd').format(selectedDate);
-                                });
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
-                  child: Text(
-                    'Cancel',
-                    style: GoogleFonts.publicSans(color: t.textSecondary),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: t.secondary,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(120, 42),
-                  ),
-                  onPressed: () async {
-                    if (formKey.currentState!.validate()) {
-                      final foodQty = foodCtrl.text.trim();
-                      final beneficiaries = int.parse(beneficiariesCtrl.text.trim());
-                      final delLocation = locationCtrl.text.trim();
-                      
-                      Navigator.pop(dialogCtx);
-                      
-                      await _completeVolunteerDelivery(
-                        vol: vol,
-                        donation: donation,
-                        foodDelivered: foodQty,
-                        beneficiariesServed: beneficiaries,
-                        deliveryLocation: delLocation,
-                        deliveryDate: selectedDate,
-                      );
-                    }
-                  },
-                  child: const Text('Complete'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _completeVolunteerDelivery({
-    required VolunteerModel vol,
-    required DonationModel donation,
-    required String foodDelivered,
-    required int beneficiariesServed,
-    required String deliveryLocation,
-    required DateTime deliveryDate,
-  }) async {
-    try {
-      final db = FirebaseFirestore.instance;
-
-      // 1. Update Donation Status & details
-      await db.collection('donations').doc(donation.id).update({
-        'status': 'Delivered',
-        'foodDelivered': foodDelivered,
-        'beneficiariesServed': beneficiariesServed,
-        'deliveryLocation': deliveryLocation,
-        'deliveredAt': deliveryDate.toIso8601String(),
-      });
-
-      // 2. Free volunteer
-      await db.collection('volunteers').doc(vol.id).update({
-        'status': 'Available',
-        'assignedDonationId': FieldValue.delete(),
-      });
-
-      // 3. Notify Donor
-      if (donation.donorId.isNotEmpty) {
-        await AppNotifications.send(
-          userId: donation.donorId,
-          donationId: donation.id,
-          title: 'Food Delivered',
-          body: 'Thank you! Your donation has been successfully delivered.',
-          status: 'Delivered',
-        );
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.secondaryContainer,
-            content: Text(
-              'Delivery recorded & volunteer marked as Available!',
-              style: GoogleFonts.publicSans(color: Colors.white),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.error,
-            content: Text('Failed to complete delivery: $e'),
-          ),
-        );
-      }
-    }
-  }
 
   // ─── SUB-TAB 1: VOLUNTEER LIST SECTION ───────────────────────────────────
 
@@ -486,6 +229,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                     label: Text(chip),
                     selected: selected,
                     selectedColor: AppColors.primary,
+                    backgroundColor: t.surfaceContainerLow,
                     labelStyle: GoogleFonts.publicSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -742,33 +486,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                               const SizedBox(height: 12),
                               Row(
                                 children: [
-                                  if (donation.status == 'Volunteer Assigned') ...[
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: t.secondary,
-                                        foregroundColor: Colors.white,
-                                        minimumSize: const Size(120, 36),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                      ),
-                                      onPressed: () => _updateVolunteerPickupStatus(donation, 'Picked Up'),
-                                      icon: const Icon(Icons.local_shipping_outlined, size: 16),
-                                      label: const Text('Mark Picked Up'),
-                                    ),
-                                    const SizedBox(width: 8),
-                                  ] else if (donation.status == 'Picked Up') ...[
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: t.primary,
-                                        foregroundColor: Colors.white,
-                                        minimumSize: const Size(120, 36),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                      ),
-                                      onPressed: () => _showMgmtDistributionDialog(vol, donation),
-                                      icon: const Icon(Icons.done_all, size: 16),
-                                      label: const Text('Complete Delivery'),
-                                    ),
-                                    const SizedBox(width: 8),
-                                  ],
+
                                   OutlinedButton.icon(
                                     style: OutlinedButton.styleFrom(
                                       side: BorderSide(color: t.primary, width: 1),
@@ -1046,7 +764,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        backgroundColor: AppColors.secondaryContainer,
+                        backgroundColor: const Color(0xFF1E1E1E),
                         content: Text(
                           'Volunteer "${nameCtrl.text}" registered successfully!',
                           style: GoogleFonts.publicSans(color: Colors.white),
@@ -1127,11 +845,11 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                     const SizedBox(height: 16),
                   ] else ...[
                     Text(
-                      'Select an Available Volunteer:',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
+                      'Select an Available Volunteer (${availableVolunteers.length}):',
+                      style: GoogleFonts.publicSans(
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: t.textSecondary,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -1160,7 +878,7 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                               ),
                               subtitle: Text(
                                 '${vol.phone} • Area: ${vol.workingArea}',
-                                style: GoogleFonts.publicSans(fontSize: 12, color: t.outline),
+                                style: GoogleFonts.publicSans(fontSize: 12, color: t.textSecondary),
                               ),
                               trailing: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -1168,25 +886,39 @@ class _VolunteerMgmtScreenState extends State<VolunteerMgmtScreen>
                                   padding: const EdgeInsets.symmetric(horizontal: 12),
                                 ),
                                 onPressed: () async {
-                                  await _firestoreService.assignVolunteerToDonation(
-                                    donationId: donation.id,
-                                    volunteerId: vol.id,
-                                    volunteerName: vol.name,
-                                    volunteerPhone: vol.phone,
-                                    donorId: donation.donorId,
-                                  );
+                                  final parentContext = this.context;
+                                  // Pop the assignment modal sheet immediately so stream update doesn't flash empty state
+                                  Navigator.pop(context);
 
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        backgroundColor: t.secondary,
-                                        content: Text(
-                                          'Assigned ${vol.name} to pickup! Donation status updated to "Volunteer Assigned".',
-                                          style: GoogleFonts.publicSans(color: Colors.white),
-                                        ),
-                                      ),
+                                  try {
+                                    await _firestoreService.assignVolunteerToDonation(
+                                      donationId: donation.id,
+                                      volunteerId: vol.id,
+                                      volunteerName: vol.name,
+                                      volunteerPhone: vol.phone,
+                                      donorId: donation.donorId,
                                     );
+
+                                    if (parentContext.mounted) {
+                                      ScaffoldMessenger.of(parentContext).showSnackBar(
+                                        SnackBar(
+                                          backgroundColor: const Color(0xFF1E1E1E),
+                                          content: Text(
+                                            'Assigned ${vol.name} to pickup! Status updated to "Volunteer Assigned".',
+                                            style: GoogleFonts.publicSans(color: Colors.white),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (parentContext.mounted) {
+                                      ScaffoldMessenger.of(parentContext).showSnackBar(
+                                        SnackBar(
+                                          backgroundColor: AppColors.error,
+                                          content: Text('Failed to assign volunteer: $e'),
+                                        ),
+                                      );
+                                    }
                                   }
                                 },
                                 child: const Text('Assign'),

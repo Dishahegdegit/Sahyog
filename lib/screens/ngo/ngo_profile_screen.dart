@@ -18,6 +18,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import '../auth/login_screen.dart';
+import 'ngo_history_screen.dart';
 
 class NgoProfileScreen extends ConsumerStatefulWidget {
   const NgoProfileScreen({super.key});
@@ -598,6 +599,11 @@ class _NgoProfileScreenState extends ConsumerState<NgoProfileScreen> {
 
                     const SizedBox(height: 20),
 
+                    // ── Donated Food History Card
+                    _buildDonationHistoryCard(),
+
+                    const SizedBox(height: 20),
+
                     // ── App Theme Preference Card
                     _buildThemeCard(),
 
@@ -638,6 +644,70 @@ class _NgoProfileScreenState extends ConsumerState<NgoProfileScreen> {
             },
           );
         },
+      ),
+    );
+  }
+
+  // ── DONATED FOOD HISTORY CARD ─────────────────────────────────────────────
+
+  Widget _buildDonationHistoryCard() {
+    return Card(
+      color: t.surfaceContainerLow,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: t.surfaceContainerHighest),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NgoHistoryScreen()),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.history_rounded, color: AppColors.primary, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Food Donation History',
+                      style: GoogleFonts.publicSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: t.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'View all past accepted & delivered food donations',
+                      style: GoogleFonts.publicSans(
+                        fontSize: 12,
+                        color: t.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_ios_rounded, color: t.textSecondary, size: 18),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -836,7 +906,7 @@ class _NgoProfileScreenState extends ConsumerState<NgoProfileScreen> {
           ),
           _buildDivider(),
           // ── Official Address with Map ──────────────────────────────────────
-          _buildAddressWithMap(),
+          _buildLocationSection(t),
           _buildDivider(),
           _buildField(
             label: 'Phone Contact',
@@ -863,104 +933,75 @@ class _NgoProfileScreenState extends ConsumerState<NgoProfileScreen> {
     );
   }
 
-  Widget _buildAddressWithMap() {
+  Widget _buildLocationSection(NgoTheme t) {
     final hasPin = _lat != null && _lng != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Label row with icon
-        Row(
-          children: [
-            Icon(Icons.location_on_outlined, size: 20, color: t.outline),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Official Address',
-                    style: GoogleFonts.publicSans(
-                      fontSize: 12,
-                      color: t.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (_isEditing)
-                    TextFormField(
-                      controller: _addressController,
-                      maxLines: 2,
-                      style: GoogleFonts.publicSans(
-                        color: t.textPrimary,
-                        fontSize: 14,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Street address, area, city...',
-                        hintStyle: GoogleFonts.publicSans(color: t.textHint),
-                        contentPadding: const EdgeInsets.symmetric(
-                            vertical: 8, horizontal: 0),
-                        border: InputBorder.none,
-                        isDense: true,
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.search, color: AppColors.primary, size: 20),
-                          onPressed: () => _geocodeAddress(_addressController.text),
-                          tooltip: 'Find on map',
+        Text(
+          'Official Address',
+          style: GoogleFonts.publicSans(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: t.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Single Address Bar with Pin Icon
+        Container(
+          decoration: BoxDecoration(
+            color: t.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: t.surfaceContainerHighest),
+          ),
+          child: TextField(
+            controller: _addressController,
+            enabled: _isEditing,
+            style: GoogleFonts.publicSans(
+              color: t.textPrimary,
+              fontSize: 14,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Enter street address, area, city...',
+              hintStyle: GoogleFonts.publicSans(color: t.textHint, fontSize: 13),
+              prefixIcon: Icon(Icons.location_on_outlined, color: t.primary, size: 20),
+              suffixIcon: _isGettingLocation
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
                         ),
                       ),
                     )
-                  else
-                    Text(
-                      _addressController.text.trim().isNotEmpty
-                          ? LocationService.cleanAddress(_addressController.text, fallbackName: 'Official Registered Location')
-                          : 'Official Registered Location',
-                      style: GoogleFonts.publicSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: t.textPrimary,
+                  : IconButton(
+                      icon: const Icon(
+                        Icons.location_on,
+                        color: AppColors.primary,
+                        size: 22,
                       ),
+                      tooltip: 'Search location / Use GPS',
+                      onPressed: () {
+                        final query = _addressController.text.trim();
+                        if (query.isNotEmpty) {
+                          _geocodeAddress(query);
+                        } else {
+                          _getCurrentLocation();
+                        }
+                      },
                     ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Use Current Location button (always shown)
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isGettingLocation ? null : _getCurrentLocation,
-            icon: _isGettingLocation
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primary,
-                    ),
-                  )
-                : const Icon(Icons.my_location, size: 16, color: AppColors.primary),
-            label: Text(
-              _isGettingLocation ? 'Getting location...' : 'Use Current Location',
-              style: GoogleFonts.publicSans(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.primary, width: 1.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              backgroundColor: AppColors.primary.withValues(alpha: 0.05),
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
         ),
 
-        // Google Map Preview (using flutter_map)
+        // Map Preview (using flutter_map)
         if (hasPin) ...[
           const SizedBox(height: 12),
           ClipRRect(

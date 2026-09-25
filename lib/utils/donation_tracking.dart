@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 
-/// Spec path: Submitted → Accepted → Volunteer Assigned → Picked Up → Delivered → Completed
+/// Spec path: Submitted → Accepted → Volunteer Assigned → Picked Up → On Delivery → Delivered
 class DonationTracking {
   static const List<String> steps = [
     'Submitted',
     'Accepted',
     'Volunteer Assigned',
     'Picked Up',
+    'On Delivery',
     'Delivered',
-    'Completed',
   ];
 
   static String normalize(String? raw) {
@@ -19,8 +19,8 @@ class DonationTracking {
       return 'submitted';
     }
     if (value.contains('cancel')) return 'cancelled';
-    if (value.contains('complete')) return 'completed';
-    if (value.contains('deliver')) return 'delivered';
+    if (value.contains('complete') || value == 'delivered') return 'delivered';
+    if (value.contains('on delivery') || value.contains('on_delivery')) return 'on_delivery';
     if (value.contains('picked') || value.contains('transit')) return 'picked_up';
     if (value.contains('volunteer') || value.contains('assigned')) return 'volunteer_assigned';
     if (value.contains('accept')) return 'accepted';
@@ -38,8 +38,9 @@ class DonationTracking {
         return 2;
       case 'picked_up':
         return 3;
-      case 'delivered':
+      case 'on_delivery':
         return 4;
+      case 'delivered':
       case 'completed':
         return 5;
       case 'cancelled':
@@ -60,6 +61,7 @@ class DonationTracking {
         return AppColors.statusAccepted;
       case 'volunteer_assigned':
       case 'picked_up':
+      case 'on_delivery':
         return AppColors.statusTransit;
       case 'delivered':
       case 'completed':
@@ -76,6 +78,7 @@ class DonationTracking {
       case 'cancelled':
         return 'Cancelled';
       case 'picked_up':
+      case 'on_delivery':
       case 'delivered':
       case 'completed':
         return 'Picked up';
@@ -93,9 +96,10 @@ class DonationTracking {
       case 'cancelled':
         return 'Cancelled';
       case 'completed':
-        return 'Completed';
       case 'delivered':
         return 'Delivered';
+      case 'on_delivery':
+        return 'Out on delivery';
       case 'picked_up':
         return 'In transit';
       default:

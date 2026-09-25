@@ -171,6 +171,13 @@ class DonationStatusScreen extends StatelessWidget {
                   final statusLabel = _formatStatusLabel(rawStatus);
                   final statusColor = _getStatusColor(statusLabel);
                   final formattedDate = _formatDate(data['createdAt']);
+                  final foodTitle = (data['foodTitle'] as String?)?.trim().isNotEmpty == true
+                      ? (data['foodTitle'] as String).trim()
+                      : ((data['foodName'] as String?)?.trim().isNotEmpty == true
+                          ? (data['foodName'] as String).trim()
+                          : ((data['title'] as String?)?.trim().isNotEmpty == true
+                              ? (data['title'] as String).trim()
+                              : foodType));
 
                   final isVeg = foodType.toLowerCase() == 'veg';
 
@@ -207,23 +214,29 @@ class DonationStatusScreen extends StatelessWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      isVeg ? Icons.eco : Icons.kebab_dining,
-                                      color: isVeg ? Colors.green : AppColors.primary,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      foodType,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: c.textPrimary,
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        isVeg ? Icons.eco : Icons.kebab_dining,
+                                        color: isVeg ? Colors.green : AppColors.primary,
+                                        size: 20,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          foodTitle,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: c.textPrimary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

@@ -7,6 +7,8 @@ import 'package:latlong2/latlong.dart' hide Path;
 import '../../constants/app_colors.dart';
 import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
+import '../../services/routing_service.dart';
+import '../../widgets/animated_driver_marker.dart';
 import 'pickup_details_screen.dart';
 
 class NgoMapScreen extends StatefulWidget {
@@ -19,6 +21,45 @@ class NgoMapScreen extends StatefulWidget {
 class _NgoMapScreenState extends State<NgoMapScreen> {
   NgoTheme get t => NgoTheme.of(context);
   String get _currentNgoId => FirebaseAuth.instance.currentUser?.uid ?? 'ngo_demo';
+
+  final MapController _mapController = MapController();
+  DonationModel? _selectedDonation;
+  List<LatLng> _routePolyline = [];
+  bool _isLoadingRoute = false;
+
+  Future<void> _selectPickup(DonationModel d) async {
+    setState(() {
+      _selectedDonation = d;
+      _isLoadingRoute = true;
+      _routePolyline = [];
+    });
+
+    final pickupLat = d.latitude ?? 19.0760;
+    final pickupLng = d.longitude ?? 72.8777;
+    final pickupPos = LatLng(pickupLat, pickupLng);
+
+    // NGO Hub Position (offset or default center)
+    final ngoPos = LatLng(pickupLat - 0.020, pickupLng - 0.015);
+
+    final points = await RoutingService.fetchRoute(from: pickupPos, to: ngoPos);
+
+    if (mounted) {
+      setState(() {
+        _routePolyline = points;
+        _isLoadingRoute = false;
+      });
+
+      if (points.isNotEmpty) {
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: LatLngBounds.fromPoints(points),
+            padding: const EdgeInsets.all(60),
+          ),
+        );
+      }
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -75,10 +116,19 @@ class _NgoMapScreenState extends State<NgoMapScreen> {
                               .toList()),
                       builder: (context, snapshot) {
                         final activePickups = snapshot.data ?? [];
-                        final tileUrl = t.isDark
-                            ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
-                            : 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png';
+                        const tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+                        final currentSelected = _selectedDonation != null
+                            ? (activePickups.any((p) => p.id == _selectedDonation!.id)
+                                ? activePickups.firstWhere((p) => p.id == _selectedDonation!.id)
+                                : null)
+                            : null;
+
+                        final realGps = (currentSelected?.driverLatitude != null && currentSelected?.driverLongitude != null)
+                            ? LatLng(currentSelected!.driverLatitude!, currentSelected.driverLongitude!)
+                            : null;
+
                         return FlutterMap(
+                          mapController: _mapController,
                           options: const MapOptions(
                             initialCenter: LatLng(19.0760, 72.8777),
                             initialZoom: 12.0,
@@ -88,45 +138,98 @@ class _NgoMapScreenState extends State<NgoMapScreen> {
                               urlTemplate: tileUrl,
                               userAgentPackageName: 'com.sahyog.app',
                             ),
+                            if (currentSelected != null && _routePolyline.isNotEmpty)
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: _routePolyline,
+                                    color: t.primary,
+                                    strokeWidth: 4.5,
+                                  ),
+                                ],
+                              ),
                             MarkerLayer(
-                              markers: activePickups.asMap().entries.map((entry) {
-                                final idx = entry.key;
-                                final p = entry.value;
-                                final lat = 19.0760 + (idx * 0.015);
-                                final lng = 72.8777 + (idx * 0.012);
+                              markers: activePickups.map((p) {
+                                final lat = p.latitude ?? 19.0760;
+                                final lng = p.longitude ?? 72.8777;
+                                final isSelected = currentSelected?.id == p.id;
                                 return Marker(
                                   point: LatLng(lat, lng),
-                                  width: 40,
-                                  height: 40,
+                                  width: 44,
+                                  height: 44,
                                   child: GestureDetector(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => PickupDetailsScreen(donationId: p.id),
+                                    onTap: () => _selectPickup(p),
+                                    child: AnimatedScale(
+                                      scale: isSelected ? 1.2 : 1.0,
+                                      duration: const Duration(milliseconds: 200),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: isSelected ? t.primary : Colors.white,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: t.primary, width: 2.5),
+                                          boxShadow: [
+                                            BoxShadow(color: t.primary.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3)),
+                                          ],
                                         ),
-                                      );
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: t.primary,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(color: t.primary.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3)),
-                                        ],
+                                        child: Icon(
+                                          Icons.location_on_rounded,
+                                          color: isSelected ? Colors.white : t.primary,
+                                          size: 20,
+                                        ),
                                       ),
-                                      child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
                                     ),
                                   ),
                                 );
                               }).toList(),
                             ),
+                            if (currentSelected != null && _routePolyline.isNotEmpty)
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: _routePolyline.last,
+                                    width: 44,
+                                    height: 44,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade700,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 2.5),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.orange.withValues(alpha: 0.4),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.shield_rounded,
+                                        size: 20,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            if (currentSelected != null && (_routePolyline.isNotEmpty || realGps != null))
+                              AnimatedDriverMarker(
+                                polyline: _routePolyline,
+                                realGpsPosition: realGps,
+                                markerColor: t.primary,
+                              ),
                           ],
                         );
                       },
                     ),
                   ),
+                  if (_isLoadingRoute)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      child: Center(
+                        child: CircularProgressIndicator(color: t.primary),
+                      ),
+                    ),
                   Positioned(
                     top: 16,
                     left: 16,
@@ -237,14 +340,7 @@ class _NgoMapScreenState extends State<NgoMapScreen> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PickupDetailsScreen(donationId: donation.id),
-            ),
-          );
-        },
+        onTap: () => _selectPickup(donation),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -309,7 +405,7 @@ class _NgoMapScreenState extends State<NgoMapScreen> {
                 ),
               ),
 
-              // Right: Status Badge & Chevron
+              // Right: Status Badge & Update Status Button
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -330,8 +426,33 @@ class _NgoMapScreenState extends State<NgoMapScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Icon(Icons.chevron_right, color: t.outline, size: 20),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: const Size(90, 32),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PickupDetailsScreen(donationId: donation.id),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.alt_route_rounded, size: 14),
+                    label: Text(
+                      'Update Status',
+                      style: GoogleFonts.publicSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],

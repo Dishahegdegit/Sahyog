@@ -7,6 +7,9 @@ import '../../constants/app_colors.dart';
 import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../services/app_notifications.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+import '../../widgets/animated_driver_marker.dart';
 
 class PickupDetailsScreen extends StatefulWidget {
   final String donationId;
@@ -33,6 +36,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
   }
 
   void _showDistributionDialog(DonationModel donation) {
+    final theme = t;
     final foodCtrl = TextEditingController(text: donation.quantity);
     final beneficiariesCtrl = TextEditingController(
       text: donation.servesCount > 0 ? donation.servesCount.toString() : '',
@@ -53,13 +57,13 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: AppColors.surfaceContainerLow,
+              backgroundColor: theme.surfaceContainerLow,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Text(
                 'Record Food Distribution',
                 style: GoogleFonts.publicSans(
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+                  color: theme.textPrimary,
                 ),
               ),
               content: Form(
@@ -72,7 +76,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                         'Please record the distribution details to complete this delivery.',
                         style: GoogleFonts.publicSans(
                           fontSize: 13,
-                          color: AppColors.textSecondary,
+                          color: theme.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -80,10 +84,11 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       // Food Delivered (quantity)
                       TextFormField(
                         controller: foodCtrl,
-                        style: GoogleFonts.publicSans(color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
+                        style: GoogleFonts.publicSans(color: theme.textPrimary),
+                        decoration: InputDecoration(
                           labelText: 'Food Delivered (Quantity) *',
-                          prefixIcon: Icon(Icons.scale_outlined, size: 20),
+                          labelStyle: TextStyle(color: theme.textSecondary),
+                          prefixIcon: Icon(Icons.scale_outlined, size: 20, color: theme.primary),
                         ),
                         validator: (v) => v == null || v.trim().isEmpty ? 'Enter food quantity' : null,
                       ),
@@ -93,10 +98,11 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       TextFormField(
                         controller: beneficiariesCtrl,
                         keyboardType: TextInputType.number,
-                        style: GoogleFonts.publicSans(color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
+                        style: GoogleFonts.publicSans(color: theme.textPrimary),
+                        decoration: InputDecoration(
                           labelText: 'Number of Beneficiaries Served *',
-                          prefixIcon: Icon(Icons.people_outline, size: 20),
+                          labelStyle: TextStyle(color: theme.textSecondary),
+                          prefixIcon: Icon(Icons.people_outline, size: 20, color: theme.primary),
                         ),
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) return 'Enter number of beneficiaries';
@@ -109,10 +115,11 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       // Delivery Location
                       TextFormField(
                         controller: locationCtrl,
-                        style: GoogleFonts.publicSans(color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
+                        style: GoogleFonts.publicSans(color: theme.textPrimary),
+                        decoration: InputDecoration(
                           labelText: 'Delivery Location *',
-                          prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                          labelStyle: TextStyle(color: theme.textSecondary),
+                          prefixIcon: Icon(Icons.location_on_outlined, size: 20, color: theme.primary),
                         ),
                         validator: (v) => v == null || v.trim().isEmpty ? 'Enter delivery location' : null,
                       ),
@@ -122,12 +129,13 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       TextFormField(
                         controller: dateCtrl,
                         readOnly: true,
-                        style: GoogleFonts.publicSans(color: AppColors.textPrimary),
+                        style: GoogleFonts.publicSans(color: theme.textPrimary),
                         decoration: InputDecoration(
                           labelText: 'Delivery Date *',
-                          prefixIcon: const Icon(Icons.calendar_today_outlined, size: 20),
+                          labelStyle: TextStyle(color: theme.textSecondary),
+                          prefixIcon: Icon(Icons.calendar_today_outlined, size: 20, color: theme.primary),
                           suffixIcon: IconButton(
-                            icon: const Icon(Icons.date_range, color: AppColors.primary),
+                            icon: Icon(Icons.date_range, color: theme.primary),
                             onPressed: () async {
                               final picked = await showDatePicker(
                                 context: context,
@@ -154,13 +162,13 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   onPressed: () => Navigator.pop(dialogCtx),
                   child: Text(
                     'Cancel',
-                    style: GoogleFonts.publicSans(color: AppColors.textSecondary),
+                    style: GoogleFonts.publicSans(color: theme.textSecondary),
                   ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.secondary,
-                    foregroundColor: Colors.white,
+                    backgroundColor: theme.primary,
+                    foregroundColor: theme.isDark ? Colors.white : Colors.black,
                     minimumSize: const Size(120, 42),
                   ),
                   onPressed: () async {
@@ -181,7 +189,13 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       );
                     }
                   },
-                  child: const Text('Complete'),
+                  child: Text(
+                    'Complete',
+                    style: GoogleFonts.publicSans(
+                      fontWeight: FontWeight.w800,
+                      color: theme.isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
                 ),
               ],
             );
@@ -240,7 +254,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: AppColors.secondaryContainer,
+            backgroundColor: const Color(0xFF1E1E1E),
             content: Text(
               'Pickup status marked as $newStatus!',
               style: GoogleFonts.publicSans(color: Colors.white),
@@ -303,11 +317,11 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
               child: Row(
                 children: [
                   const SizedBox(width: 8),
-                  Icon(Icons.arrow_back_ios, color: t.secondary, size: 16),
+                  Icon(Icons.arrow_back_ios, color: t.primary, size: 16),
                   Text(
                     'back',
                     style: GoogleFonts.publicSans(
-                      color: t.secondary,
+                      color: t.primary,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -324,17 +338,6 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
               ),
             ),
             centerTitle: true,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.ios_share, color: AppColors.secondary),
-                onPressed: () {},
-              ),
-              IconButton(
-                icon: const Icon(Icons.help_outline, color: AppColors.secondary),
-                onPressed: () {},
-              ),
-              const SizedBox(width: 8),
-            ],
           ),
           body: Stack(
             children: [
@@ -353,7 +356,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       style: GoogleFonts.publicSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -366,7 +369,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       style: GoogleFonts.publicSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -379,7 +382,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       style: GoogleFonts.publicSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -392,7 +395,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       style: GoogleFonts.publicSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -419,9 +422,16 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
 
   Widget _buildMapCard(DonationModel donation) {
     final String labelId = donation.id.length > 7 ? donation.id.substring(0, 7).toUpperCase() : donation.id.toUpperCase();
+    final pickupLat = donation.latitude ?? 19.0760;
+    final pickupLng = donation.longitude ?? 72.8777;
+    final pickupPos = LatLng(pickupLat, pickupLng);
+    final ngoPos = LatLng(pickupLat - 0.020, pickupLng - 0.015);
+    final realGps = (donation.driverLatitude != null && donation.driverLongitude != null)
+        ? LatLng(donation.driverLatitude!, donation.driverLongitude!)
+        : null;
 
     return Container(
-      height: 180,
+      height: 200,
       width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.surfaceContainerHigh,
@@ -430,12 +440,68 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
       ),
       child: Stack(
         children: [
-          // Map Road Painting
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: CustomPaint(
-              size: const Size(double.infinity, 180),
-              painter: RouteMapPainter(),
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: pickupPos,
+                initialZoom: 12.5,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.sahyog.app',
+                ),
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: [pickupPos, ngoPos],
+                      color: AppColors.primary,
+                      strokeWidth: 4.0,
+                    ),
+                  ],
+                ),
+                MarkerLayer(
+                  markers: [
+                    // Pickup Location Pin (Donor)
+                    Marker(
+                      point: pickupPos,
+                      width: 36,
+                      height: 36,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        ),
+                        child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 18),
+                      ),
+                    ),
+                    // Drop-off Pin (NGO Hub)
+                    Marker(
+                      point: ngoPos,
+                      width: 36,
+                      height: 36,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade700,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        ),
+                        child: const Icon(Icons.shield_rounded, color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+                AnimatedDriverMarker(
+                  polyline: [pickupPos, ngoPos],
+                  realGpsPosition: realGps,
+                ),
+              ],
             ),
           ),
 
@@ -462,7 +528,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       const SizedBox(width: 6),
                       Text(
                         'Donor location',
-                        style: GoogleFonts.publicSans(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                        style: GoogleFonts.publicSans(fontSize: 11, color: t.textSecondary, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -478,7 +544,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                       const SizedBox(width: 6),
                       Text(
                         'NGO drop point',
-                        style: GoogleFonts.publicSans(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                        style: GoogleFonts.publicSans(fontSize: 11, color: t.textSecondary, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -487,7 +553,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                     padding: const EdgeInsets.only(left: 14),
                     child: Text(
                       '#$labelId',
-                      style: GoogleFonts.inter(fontSize: 10, color: AppColors.outline, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.inter(fontSize: 10, color: t.textSecondary, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -502,10 +568,10 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: t.surface,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 6),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6),
                 ],
               ),
               child: Column(
@@ -517,14 +583,14 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                     style: GoogleFonts.publicSans(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+                      color: t.textPrimary,
                     ),
                   ),
                   Text(
                     donation.distance.isNotEmpty ? donation.distance : '3.4 km',
                     style: GoogleFonts.publicSans(
                       fontSize: 11,
-                      color: AppColors.textSecondary,
+                      color: t.textSecondary,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -562,16 +628,17 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
     int currentStep = 0;
     if (status == 'Volunteer Assigned') currentStep = 1;
     if (status == 'Picked Up') currentStep = 2;
-    if (status == 'Delivered') currentStep = 3;
+    if (status == 'On Delivery') currentStep = 3;
+    if (status == 'Delivered') currentStep = 4;
 
-    final steps = ['Request\nAccepted', 'Volunteer\nAssigned', 'Picked Up', 'Delivered'];
+    final steps = ['Accepted', 'Volunteer\nAssigned', 'Picked Up', 'On Delivery', 'Completed'];
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: t.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        border: Border.all(color: t.surfaceContainerHighest),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -591,7 +658,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                         height: 22,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isCompleted ? AppColors.secondary : Colors.grey.shade300,
+                          color: isCompleted ? t.primary : t.outline.withValues(alpha: 0.3),
                         ),
                         child: isCompleted
                             ? const Icon(Icons.check, color: Colors.white, size: 14)
@@ -604,7 +671,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                         style: GoogleFonts.publicSans(
                           fontSize: 9,
                           fontWeight: isCompleted ? FontWeight.w700 : FontWeight.w500,
-                          color: isCompleted ? AppColors.secondary : AppColors.textSecondary,
+                          color: isCompleted ? t.primary : t.textSecondary,
                           height: 1.2,
                         ),
                       ),
@@ -615,7 +682,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   Container(
                     width: 20,
                     height: 2,
-                    color: isCompleted ? AppColors.secondary : Colors.grey.shade300,
+                    color: isCompleted ? t.primary : t.outline.withValues(alpha: 0.3),
                     margin: const EdgeInsets.only(bottom: 20),
                   ),
               ],
@@ -632,21 +699,21 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: t.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        border: Border.all(color: t.surfaceContainerHighest),
       ),
       child: Row(
         children: [
           // Donor Avatar
           CircleAvatar(
             radius: 24,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+            backgroundColor: t.primary.withValues(alpha: 0.1),
             child: Text(
               donation.donorName.isNotEmpty ? donation.donorName[0].toUpperCase() : 'D',
               style: GoogleFonts.publicSans(
                 fontWeight: FontWeight.w800,
-                color: AppColors.primary,
+                color: t.primary,
                 fontSize: 18,
               ),
             ),
@@ -663,7 +730,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   style: GoogleFonts.publicSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: t.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -671,7 +738,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   'Address: ${donation.pickupLocation}',
                   style: GoogleFonts.publicSans(
                     fontSize: 11,
-                    color: AppColors.textSecondary,
+                    color: t.textSecondary,
                     height: 1.3,
                   ),
                 ),
@@ -688,12 +755,12 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                 height: 32,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.secondary.withValues(alpha: 0.1),
+                  color: t.primary.withValues(alpha: 0.1),
                 ),
-                child: const Icon(Icons.phone, color: AppColors.secondary, size: 16),
+                child: Icon(Icons.phone, color: t.primary, size: 16),
               ),
               const SizedBox(height: 2),
-              Text('Call', style: GoogleFonts.publicSans(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.secondary)),
+              Text('Call', style: GoogleFonts.publicSans(fontSize: 9, fontWeight: FontWeight.w600, color: t.primary)),
             ],
           ),
           const SizedBox(width: 12),
@@ -704,12 +771,12 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                 height: 32,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.secondary.withValues(alpha: 0.1),
+                  color: t.primary.withValues(alpha: 0.1),
                 ),
-                child: const Icon(Icons.chat_bubble, color: AppColors.secondary, size: 16),
+                child: Icon(Icons.chat_bubble, color: t.primary, size: 16),
               ),
               const SizedBox(height: 2),
-              Text('Chat', style: GoogleFonts.publicSans(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.secondary)),
+              Text('Chat', style: GoogleFonts.publicSans(fontSize: 9, fontWeight: FontWeight.w600, color: t.primary)),
             ],
           ),
         ],
@@ -727,9 +794,9 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: t.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        border: Border.all(color: t.surfaceContainerHighest),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -763,7 +830,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   style: GoogleFonts.publicSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: t.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -772,18 +839,18 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   style: GoogleFonts.publicSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+                    color: t.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 RichText(
                   text: TextSpan(
                     text: 'Packaging: ',
-                    style: GoogleFonts.publicSans(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                    style: GoogleFonts.publicSans(fontSize: 11, fontWeight: FontWeight.w700, color: t.textSecondary),
                     children: [
                       TextSpan(
                         text: 'Eco-friendly containers',
-                        style: GoogleFonts.publicSans(fontWeight: FontWeight.w500),
+                        style: GoogleFonts.publicSans(fontWeight: FontWeight.w500, color: t.textPrimary),
                       ),
                     ],
                   ),
@@ -793,11 +860,11 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   RichText(
                     text: TextSpan(
                       text: 'Special Notes: ',
-                      style: GoogleFonts.publicSans(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.error),
+                      style: GoogleFonts.publicSans(fontSize: 11, fontWeight: FontWeight.w700, color: t.error),
                       children: [
                         TextSpan(
                           text: donation.notes,
-                          style: GoogleFonts.publicSans(fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+                          style: GoogleFonts.publicSans(fontWeight: FontWeight.w500, color: t.textSecondary),
                         ),
                       ],
                     ),
@@ -818,20 +885,20 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: t.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.surfaceContainerHighest),
+          border: Border.all(color: t.surfaceContainerHighest),
         ),
         child: Row(
           children: [
-            const Icon(Icons.info_outline, color: AppColors.tertiary),
+            Icon(Icons.info_outline, color: t.primary),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'No Volunteer Assigned. Use Community > Assign Pickups tab to register a helper.',
                 style: GoogleFonts.publicSans(
                   fontSize: 12,
-                  color: AppColors.textSecondary,
+                  color: t.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -844,13 +911,13 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: t.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceContainerHighest),
+        border: Border.all(color: t.surfaceContainerHighest),
       ),
       child: Row(
         children: [
-          // Volunteer Avatar with yellow container color background
+          // Volunteer Avatar
           CircleAvatar(
             radius: 24,
             backgroundColor: Colors.amber.shade200,
@@ -858,7 +925,7 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
               donation.assignedVolunteerName!.isNotEmpty ? donation.assignedVolunteerName![0].toUpperCase() : 'V',
               style: GoogleFonts.publicSans(
                 fontWeight: FontWeight.w800,
-                color: Colors.amber.shade800,
+                color: Colors.amber.shade900,
                 fontSize: 18,
               ),
             ),
@@ -875,19 +942,19 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
                   style: GoogleFonts.publicSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: t.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.motorcycle, size: 14, color: AppColors.secondary),
+                    Icon(Icons.motorcycle, size: 14, color: t.primary),
                     const SizedBox(width: 4),
                     Text(
                       'Bike',
                       style: GoogleFonts.publicSans(
                         fontSize: 11,
-                        color: AppColors.textSecondary,
+                        color: t.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -917,19 +984,19 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
 
     if (currentStatus == 'Delivered') {
       return Container(
-        color: Colors.white,
+        color: t.surface,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Container(
           width: double.infinity,
           height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.grey.shade200,
+            color: t.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Text(
             'DELIVERY COMPLETED',
-            style: GoogleFonts.publicSans(fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+            style: GoogleFonts.publicSans(fontWeight: FontWeight.bold, color: t.textSecondary),
           ),
         ),
       );
@@ -938,17 +1005,22 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
     // Determine target status
     String buttonText = 'Mark as Picked Up';
     String nextStatus = 'Picked Up';
-    bool showButton = isAssigned;
 
-    if (currentStatus == 'Picked Up') {
-      buttonText = 'Mark as Delivered';
+    if (currentStatus == 'Accepted' || currentStatus == 'Volunteer Assigned') {
+      buttonText = 'Mark as Picked Up';
+      nextStatus = 'Picked Up';
+    } else if (currentStatus == 'Picked Up') {
+      buttonText = 'Mark On Delivery';
+      nextStatus = 'On Delivery';
+    } else if (currentStatus == 'On Delivery') {
+      buttonText = 'Mark as Completed';
       nextStatus = 'Delivered';
     }
 
-    if (!showButton && currentStatus == 'Accepted') {
+    if (!isAssigned && currentStatus == 'Accepted') {
       // If accepted but no volunteer assigned, show button to let them know they need assignment
       return Container(
-        color: Colors.white,
+        color: t.surface,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Container(
           width: double.infinity,
@@ -969,73 +1041,39 @@ class _PickupDetailsScreenState extends State<PickupDetailsScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: t.surface,
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, -4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, -4)),
         ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          // Mark as Picked Up / Delivered Button
-          Expanded(
-            child: SizedBox(
-              height: 46,
-              child: ElevatedButton(
-                onPressed: _isUpdating
-                    ? null
-                    : () => _updateStatus(donation, nextStatus),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.secondary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                ),
-                child: _isUpdating
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : Text(
-                        buttonText,
-                        style: GoogleFonts.publicSans(fontWeight: FontWeight.w800, fontSize: 14),
-                      ),
-              ),
-            ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton(
+          onPressed: _isUpdating
+              ? null
+              : () => _updateStatus(donation, nextStatus),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: t.primary,
+            foregroundColor: t.isDark ? Colors.white : Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           ),
-          const SizedBox(width: 12),
-
-          // Report an Issue Button
-          Expanded(
-            child: SizedBox(
-              height: 46,
-              child: OutlinedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Report filed. Support will reach out shortly.',
-                        style: GoogleFonts.publicSans(),
-                      ),
-                    ),
-                  );
-                },
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.grey.shade300),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                ),
-                child: Text(
-                  'Report an Issue',
+          child: _isUpdating
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(color: t.isDark ? Colors.white : Colors.black, strokeWidth: 2),
+                )
+              : Text(
+                  buttonText,
                   style: GoogleFonts.publicSans(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
-                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: t.isDark ? Colors.white : Colors.black,
                   ),
                 ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

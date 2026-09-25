@@ -19,38 +19,58 @@ class AdminReportsScreen extends StatelessWidget {
     List<List<String>> tableData = [];
     String reportHeading = '';
 
+    // Helper functions for safe parsing & date formatting
+    DateTime? parseDate(dynamic val) {
+      if (val == null) return null;
+      if (val is Timestamp) return val.toDate();
+      if (val is String) return DateTime.tryParse(val);
+      if (val is DateTime) return val;
+      return null;
+    }
+
+    String formatDate(dynamic val, String pattern, [String fallback = '']) {
+      final dt = parseDate(val);
+      return dt != null ? DateFormat(pattern).format(dt) : fallback;
+    }
+
     try {
       if (title == 'Daily Donations') {
         final now = DateTime.now();
         final startOfDay = DateTime(now.year, now.month, now.day);
-        final snap = await db.collection('donations').where('createdAt', isGreaterThanOrEqualTo: startOfDay).get();
+        final snap = await db.collection('donations').get();
         reportHeading = 'Daily Donations Report - ${DateFormat('dd MMM yyyy').format(now)}';
         tableData.add(['Food Type', 'Quantity', 'Donor', 'Status', 'Time']);
         for (var doc in snap.docs) {
           final d = doc.data();
-          tableData.add([
-            d['foodType'] ?? '',
-            d['foodQuantity'] ?? '',
-            d['donorName'] ?? 'Unknown',
-            d['status'] ?? 'pending',
-            d['createdAt'] != null ? DateFormat('HH:mm').format((d['createdAt'] as Timestamp).toDate()) : ''
-          ]);
+          final dt = parseDate(d['createdAt']);
+          if (dt != null && dt.isAfter(startOfDay)) {
+            tableData.add([
+              (d['foodTitle'] ?? d['foodName'] ?? d['foodType'] ?? '').toString(),
+              (d['foodQuantity'] ?? d['quantity'] ?? d['servings'] ?? '').toString(),
+              (d['donorName'] ?? 'Unknown').toString(),
+              (d['status'] ?? 'pending').toString(),
+              formatDate(d['createdAt'], 'HH:mm'),
+            ]);
+          }
         }
       } else if (title == 'Monthly Donations') {
         final now = DateTime.now();
         final startOfMonth = DateTime(now.year, now.month, 1);
-        final snap = await db.collection('donations').where('createdAt', isGreaterThanOrEqualTo: startOfMonth).get();
+        final snap = await db.collection('donations').get();
         reportHeading = 'Monthly Donations Report - ${DateFormat('MMMM yyyy').format(now)}';
         tableData.add(['Date', 'Food Type', 'Servings', 'NGO', 'Status']);
         for (var doc in snap.docs) {
           final d = doc.data();
-          tableData.add([
-            d['createdAt'] != null ? DateFormat('dd MMM').format((d['createdAt'] as Timestamp).toDate()) : '',
-            d['foodType'] ?? '',
-            d['servings']?.toString() ?? '0',
-            d['ngoName'] ?? 'Pending',
-            d['status'] ?? 'pending',
-          ]);
+          final dt = parseDate(d['createdAt']);
+          if (dt == null || dt.isAfter(startOfMonth)) {
+            tableData.add([
+              formatDate(d['createdAt'], 'dd MMM'),
+              (d['foodTitle'] ?? d['foodName'] ?? d['foodType'] ?? '').toString(),
+              (d['servings'] ?? d['foodQuantity'] ?? '0').toString(),
+              (d['ngoName'] ?? 'Pending').toString(),
+              (d['status'] ?? 'pending').toString(),
+            ]);
+          }
         }
       } else if (title == 'NGO Performance') {
         final ngosSnap = await db.collection('users').where('role', isEqualTo: 'ngo').get();
@@ -62,10 +82,13 @@ class AdminReportsScreen extends StatelessWidget {
         for (var doc in ngosSnap.docs) {
           final d = doc.data();
           final ngoId = doc.id;
-          final ngoName = d['name'] ?? 'NGO';
+          final ngoName = (d['name'] ?? d['organizationName'] ?? 'NGO').toString();
           
           final received = donationsSnap.docs.where((don) => don.data()['ngoId'] == ngoId).length;
-          final completed = donationsSnap.docs.where((don) => don.data()['ngoId'] == ngoId && don.data()['status'] == 'completed').length;
+          final completed = donationsSnap.docs.where((don) {
+            final st = (don.data()['status'] ?? '').toString().toLowerCase();
+            return don.data()['ngoId'] == ngoId && (st == 'completed' || st == 'delivered');
+          }).length;
           
           final efficiency = received > 0 ? '${((completed / received) * 100).toStringAsFixed(0)}%' : '0%';
           
@@ -73,61 +96,74 @@ class AdminReportsScreen extends StatelessWidget {
             ngoName,
             received.toString(),
             completed.toString(),
-            d['registrationId'] ?? 'N/A',
+            (d['registrationId'] ?? d['regId'] ?? 'N/A').toString(),
             efficiency
           ]);
         }
       } else if (title == 'Food Distribution Reports') {
-        final snap = await db.collection('donations').where('status', isEqualTo: 'completed').get();
+        final snap = await db.collection('donations').get();
         reportHeading = 'Complete Food Distribution Log';
         tableData.add(['Donor', 'NGO', 'Volunteer', 'Address', 'Quantity']);
         for (var doc in snap.docs) {
           final d = doc.data();
-          tableData.add([
-            d['donorName'] ?? 'Donor',
-            d['ngoName'] ?? 'NGO',
-            d['volunteerName'] ?? 'Volunteer',
-            d['pickupAddress'] ?? 'N/A',
-            d['foodQuantity'] ?? 'N/A',
-          ]);
+          final st = (d['status'] ?? '').toString().toLowerCase();
+          if (st == 'completed' || st == 'delivered') {
+            tableData.add([
+              (d['donorName'] ?? 'Donor').toString(),
+              (d['ngoName'] ?? 'NGO').toString(),
+              (d['assignedVolunteerName'] ?? d['volunteerName'] ?? 'Volunteer').toString(),
+              (d['pickupAddress'] ?? d['address'] ?? 'N/A').toString(),
+              (d['foodQuantity'] ?? d['servings'] ?? 'N/A').toString(),
+            ]);
+          }
         }
       } else if (title == 'Volunteer Activity') {
         final snap = await db.collection('volunteers').get();
         reportHeading = 'Volunteer Performance & Activity';
-        tableData.add(['Volunteer Name', 'Status', 'Vehice Type', 'Deliveries', 'Joined']);
+        tableData.add(['Volunteer Name', 'Status', 'Vehicle Type', 'Deliveries', 'Joined']);
         for (var doc in snap.docs) {
           final d = doc.data();
           tableData.add([
-            d['name'] ?? 'Unknown',
-            d['status'] ?? 'Available',
-            d['vehicleType'] ?? 'N/A',
-            (d['completedDeliveries'] ?? 0).toString(),
-            d['createdAt'] != null ? DateFormat('dd/MM/yy').format((d['createdAt'] as Timestamp).toDate()) : ''
+            (d['name'] ?? 'Unknown').toString(),
+            (d['status'] ?? 'Available').toString(),
+            (d['vehicleType'] ?? d['vehicle'] ?? 'N/A').toString(),
+            (d['completedDeliveries'] ?? d['deliveriesCount'] ?? 0).toString(),
+            formatDate(d['createdAt'], 'dd/MM/yy', 'N/A'),
           ]);
         }
       } else if (title == 'Beneficiary Statistics') {
-        final snap = await db.collection('donations').where('status', isEqualTo: 'completed').get();
+        final snap = await db.collection('donations').get();
         reportHeading = 'Platform Beneficiary Statistics';
         tableData.add(['Month', 'Completed Deliveries', 'Total Servings', 'Food Distributed (kg)']);
         
-        // Simple aggregation by month
+        // Aggregation by month for completed donations
         Map<String, List<int>> monthlyStats = {};
         for (var doc in snap.docs) {
           final d = doc.data();
-          final date = d['createdAt'] != null ? (d['createdAt'] as Timestamp).toDate() : DateTime.now();
-          final monthKey = DateFormat('MMM yyyy').format(date);
-          final servings = d['servings'] is int ? d['servings'] as int : 0;
-          
-          if (!monthlyStats.containsKey(monthKey)) {
-            monthlyStats[monthKey] = [0, 0, 0];
+          final st = (d['status'] ?? '').toString().toLowerCase();
+          if (st == 'completed' || st == 'delivered') {
+            final date = parseDate(d['createdAt']) ?? DateTime.now();
+            final monthKey = DateFormat('MMM yyyy').format(date);
+            final servings = d['servings'] is num
+                ? (d['servings'] as num).toInt()
+                : (int.tryParse(d['servings']?.toString() ?? '0') ?? 0);
+            
+            if (!monthlyStats.containsKey(monthKey)) {
+              monthlyStats[monthKey] = [0, 0, 0];
+            }
+            monthlyStats[monthKey]![0] += 1;
+            monthlyStats[monthKey]![1] += servings;
           }
-          monthlyStats[monthKey]![0] += 1;
-          monthlyStats[monthKey]![1] += servings;
         }
 
-        monthlyStats.forEach((key, val) {
-          tableData.add([key, val[0].toString(), val[1].toString(), '${(val[1] * 0.4).toStringAsFixed(1)} kg']);
-        });
+        if (monthlyStats.isEmpty) {
+          final currentMonth = DateFormat('MMM yyyy').format(DateTime.now());
+          tableData.add([currentMonth, '0', '0', '0.0 kg']);
+        } else {
+          monthlyStats.forEach((key, val) {
+            tableData.add([key, val[0].toString(), val[1].toString(), '${(val[1] * 0.4).toStringAsFixed(1)} kg']);
+          });
+        }
       } else {
         // Generic fallback for other reports
         reportHeading = '$title Summary';

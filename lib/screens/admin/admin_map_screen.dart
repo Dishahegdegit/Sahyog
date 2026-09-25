@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,6 +10,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
+import '../../services/routing_service.dart';
+import '../../widgets/animated_driver_marker.dart';
+
+enum AdminMapChipFilter { all, ngos, volunteers, onDelivery, available }
+
 
 // ─────────────────────────────────────────────────────────────────
 //  Data models
@@ -84,9 +91,27 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   bool _filterNgos = true;
   bool _filterVolunteers = true;
 
+  // Active Chip Filter State
+  AdminMapChipFilter _activeChipFilter = AdminMapChipFilter.all;
+
+  // Active Route Polyline for On Delivery
+  List<LatLng> _activePolyline = [];
+  bool _isFetchingRoute = false;
+
   // Selected details targets
   _NgoPoint? _selectedNgo;
   _VolunteerPoint? _selectedVolunteer;
+
+  // Real-time Firestore stream subscriptions
+  StreamSubscription<QuerySnapshot>? _volsSubscription;
+  StreamSubscription<QuerySnapshot>? _ngosSubscription;
+  StreamSubscription<QuerySnapshot>? _donationsSubscription;
+
+  // Geocoding position cache: uid/address-key → LatLng (avoid re-geocoding on each stream event)
+  final Map<String, LatLng> _posCache = {};
+
+  // Donations cache: donationId → data (avoid re-fetching donation docs on every volunteer stream event)
+  final Map<String, Map<String, dynamic>> _donationCache = {};
 
   // Map tile style (OSM variants)
   int _tileStyle = 0; // 0=streets, 1=satellite-like (CartoDB), 2=topo
@@ -128,9 +153,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
 
   // Tile URL templates
   static const List<String> _tileUrls = [
-    'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png', // Light clean (CartoDB)
-    'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', // Dark mode (CartoDB)
-    'https://tile.openstreetmap.org/{z}/{x}/{y}.png', // Streets (OSM)
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png', // OpenStreetMap (Free, clean)
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   ];
   static const List<String> _tileLabels = ['Light', 'Dark', 'Streets'];
 
@@ -138,22 +163,67 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   void initState() {
     super.initState();
     _loadAll();
+    _setupStreams();
   }
 
   @override
   void dispose() {
+    _volsSubscription?.cancel();
+    _ngosSubscription?.cancel();
+    _donationsSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
+  // ─── Real-time Firestore listeners ──────────────────────────────
+  void _setupStreams() {
+    final db = FirebaseFirestore.instance;
+
+    // Reload whenever volunteers change (status, assignment, etc.)
+    _volsSubscription = db.collection('volunteers').snapshots().listen((_) {
+      if (mounted) _loadAll();
+    });
+
+    // Reload whenever any donation status changes (Picked Up, On Delivery, Delivered…)
+    _donationsSubscription = db.collection('donations').snapshots().listen((snap) {
+      // Update cache so _loadAll skips re-fetching individual donation docs
+      for (final doc in snap.docs) {
+        _donationCache[doc.id] = doc.data();
+      }
+      if (mounted) _loadAll();
+    });
+
+    // Reload when NGO data changes
+    _ngosSubscription = db
+        .collection('users')
+        .where('role', isEqualTo: 'ngo')
+        .snapshots()
+        .listen((_) {
+      if (mounted) _loadAll();
+    });
+  }
+
+  // ─── Geocoding ─────────────────────────────────────────────────
   // ─── Geocoding ─────────────────────────────────────────────────
   // ─── Geocoding ─────────────────────────────────────────────────
   Future<LatLng> _resolve(String address, String uid, {double? lat, double? lng}) async {
-    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-      return LatLng(lat, lng);
-    }
     final clean = address.trim();
-    if (clean.isEmpty) return _offset(_defaultCenter, uid);
+    final cacheKey = clean.isEmpty ? uid : '$uid:${clean.toLowerCase()}';
+
+    // 1. Prefer explicit coordinates saved on the document
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      final pos = LatLng(lat, lng);
+      _posCache[cacheKey] = pos;
+      return pos;
+    }
+    // 2. Return from cache to avoid re-geocoding on every stream event
+    if (_posCache.containsKey(cacheKey)) return _posCache[cacheKey]!;
+
+    if (clean.isEmpty) {
+      final fallback = _offset(_defaultCenter, uid);
+      _posCache[cacheKey] = fallback;
+      return fallback;
+    }
 
     try {
       final queryStr = clean.toLowerCase().contains('india') ? clean : '$clean, India';
@@ -166,18 +236,26 @@ class _AdminMapScreenState extends State<AdminMapScreen>
       if (res.statusCode == 200) {
         final list = json.decode(res.body) as List;
         if (list.isNotEmpty) {
-          return LatLng(double.parse(list[0]['lat']),
+          final pos = LatLng(double.parse(list[0]['lat']),
               double.parse(list[0]['lon']));
+          _posCache[cacheKey] = pos;
+          return pos;
         }
       }
     } catch (_) {}
 
     final cleanLower = clean.toLowerCase();
     for (final e in _knownLocations.entries) {
-      if (cleanLower.contains(e.key)) return _offset(e.value, uid);
+      if (cleanLower.contains(e.key)) {
+        final pos = _offset(e.value, uid);
+        _posCache[cacheKey] = pos;
+        return pos;
+      }
     }
 
-    return _offset(_defaultCenter, uid);
+    final fallback = _offset(_defaultCenter, uid);
+    _posCache[cacheKey] = fallback;
+    return fallback;
   }
 
   LatLng _offset(LatLng base, String key) {
@@ -192,78 +270,202 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   }
 
   // ─── Data Loading ───────────────────────────────────────────────
+  bool _initialLoadDone = false;
+
   Future<void> _loadAll() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     _ngos.clear();
     _volunteers.clear();
+    _posCache.clear(); // Clear stale cached positions on every full reload
     final db = FirebaseFirestore.instance;
 
     try {
-      // NGOs
-      final ngoSnap = await db
+      // ── Step 1: Fetch only admin-approved NGOs (1 icon per NGO) ──
+      final Set<String> approvedNgoIds = {};
+      final Map<String, _NgoPoint> ngoMap = {};
+
+      final approvedNgoSnap = await db
           .collection('users')
           .where('role', isEqualTo: 'ngo')
+          .where('status', isEqualTo: 'approved')
           .get();
-      for (final doc in ngoSnap.docs) {
+
+      for (final doc in approvedNgoSnap.docs) {
         final d = doc.data();
-        if ((d['status'] ?? 'pending') != 'approved') continue;
-        final address = d['address'] ?? d['officialAddress'] ?? '';
+        final name = (d['name'] ?? d['organizationName'] ?? d['ngoName'] ?? 'Approved NGO').toString().trim();
+        final address = (d['address'] ?? d['officialAddress'] ?? d['location'] ?? '').toString().trim();
         final double? lat = (d['latitude'] ?? d['lat']) is num ? (d['latitude'] ?? d['lat']).toDouble() : null;
         final double? lng = (d['longitude'] ?? d['lng']) is num ? (d['longitude'] ?? d['lng']).toDouble() : null;
-        final pos = await _resolve(address, doc.id, lat: lat, lng: lng);
-        _ngos.add(_NgoPoint(
+
+        // Skip orphan test docs with no address and no coordinates
+        if (address.isEmpty && (lat == null || lng == null || (lat == 0.0 && lng == 0.0))) continue;
+
+        approvedNgoIds.add(doc.id);
+        final pos = await _resolve(address, 'ngo_${doc.id}', lat: lat, lng: lng);
+
+        ngoMap[doc.id] = _NgoPoint(
           id: 'ngo_${doc.id}',
-          name: d['name'] ?? d['organizationName'] ?? 'Approved NGO',
+          name: name,
           address: address.isNotEmpty ? address : 'No address',
-          phone: d['phone'] ?? '',
+          phone: (d['phone'] ?? d['contactPhone'] ?? '').toString(),
           status: 'Approved',
           position: pos,
-        ));
+        );
       }
 
-      // Volunteers
-      final volSnap = await db.collection('volunteers').get();
-      for (final doc in volSnap.docs) {
+      // Also check verified = true
+      final verifiedNgoSnap = await db
+          .collection('users')
+          .where('role', isEqualTo: 'ngo')
+          .where('verified', isEqualTo: true)
+          .get();
+
+      for (final doc in verifiedNgoSnap.docs) {
+        if (approvedNgoIds.contains(doc.id)) continue;
         final d = doc.data();
-        final status = d['status'] ?? 'Available';
-        final workingArea = d['workingArea'] ?? d['area'] ?? '';
+        final name = (d['name'] ?? d['organizationName'] ?? d['ngoName'] ?? 'Approved NGO').toString().trim();
+        final address = (d['address'] ?? d['officialAddress'] ?? d['location'] ?? '').toString().trim();
         final double? lat = (d['latitude'] ?? d['lat']) is num ? (d['latitude'] ?? d['lat']).toDouble() : null;
         final double? lng = (d['longitude'] ?? d['lng']) is num ? (d['longitude'] ?? d['lng']).toDouble() : null;
-        final pos = await _resolve(workingArea, doc.id, lat: lat, lng: lng);
 
-        String pickup = d['pickupAddress'] ?? d['pickup'] ?? '';
-        String destination = d['destinationAddress'] ?? d['destination'] ?? '';
-        String item = d['donationItem'] ?? d['item'] ?? d['foodType'] ?? '';
+        if (address.isEmpty && (lat == null || lng == null || (lat == 0.0 && lng == 0.0))) continue;
 
-        if (pickup.isEmpty && d['donationId'] != null) {
-          try {
-            final donDoc = await db
-                .collection('donations')
-                .doc(d['donationId'])
-                .get();
-            if (donDoc.exists) {
-              final dd = donDoc.data()!;
-              pickup = dd['pickupAddress'] ?? dd['address'] ?? dd['location'] ?? '';
-              destination = dd['ngoAddress'] ?? dd['destinationAddress'] ?? '';
-              item = dd['foodType'] ?? dd['item'] ?? dd['description'] ?? '';
-            }
-          } catch (_) {}
-        }
+        approvedNgoIds.add(doc.id);
+        final pos = await _resolve(address, 'ngo_${doc.id}', lat: lat, lng: lng);
 
-        _volunteers.add(_VolunteerPoint(
-          id: 'vol_${doc.id}',
-          name: d['name'] ?? 'Volunteer',
-          phone: d['phone'] ?? '',
-          workingArea: workingArea.isNotEmpty ? workingArea : 'Not specified',
-          deliveryStatus: status,
-          pickupAddress: pickup.isNotEmpty ? pickup : 'Not available',
-          destinationAddress: destination.isNotEmpty ? destination : 'Not available',
-          donationItem: item.isNotEmpty ? item : 'Not specified',
+        ngoMap[doc.id] = _NgoPoint(
+          id: 'ngo_${doc.id}',
+          name: name,
+          address: address.isNotEmpty ? address : 'No address',
+          phone: (d['phone'] ?? d['contactPhone'] ?? '').toString(),
+          status: 'Approved',
           position: pos,
-        ));
+        );
       }
+
+      _ngos.addAll(ngoMap.values);
+
+      // ── Step 2: Volunteers — 1 icon per unique person ──
+      final Map<String, _VolunteerPoint> volMap = {};
+
+      for (final ngoId in approvedNgoIds) {
+        final volSnap = await db
+            .collection('volunteers')
+            .where('ngoId', isEqualTo: ngoId)
+            .get();
+
+        for (final doc in volSnap.docs) {
+          final d = doc.data();
+          final volStatusStr = (d['status'] ?? 'Available').toString().trim();
+          if (volStatusStr.toLowerCase() == 'deleted' ||
+              volStatusStr.toLowerCase() == 'inactive' ||
+              d['active'] == false) {
+            continue; // Skip deleted/inactive volunteers
+          }
+
+          final name = (d['name'] ?? 'Volunteer').toString().trim();
+          final phone = (d['phone'] ?? '').toString().trim();
+          // Unique key per person (by phone or name)
+          final personKey = phone.isNotEmpty ? phone.toLowerCase() : name.toLowerCase();
+
+          String status = volStatusStr;
+          final workingArea = (d['workingArea'] ?? d['area'] ?? '').toString().trim();
+          final double? lat = (d['latitude'] ?? d['lat']) is num ? (d['latitude'] ?? d['lat']).toDouble() : null;
+          final double? lng = (d['longitude'] ?? d['lng']) is num ? (d['longitude'] ?? d['lng']).toDouble() : null;
+
+          String pickup = d['pickupAddress'] ?? d['pickup'] ?? '';
+          String destination = d['destinationAddress'] ?? d['destination'] ?? '';
+          String item = d['donationItem'] ?? d['item'] ?? d['foodTitle'] ?? d['foodType'] ?? '';
+
+          // Check assignedDonationId or donationId for active delivery status
+          final donationId = (d['assignedDonationId'] ?? d['donationId']) as String?;
+          if (donationId != null && donationId.isNotEmpty) {
+            final cached = _donationCache[donationId];
+            Map<String, dynamic>? donData = cached;
+            if (donData == null) {
+              try {
+                final donDoc = await db.collection('donations').doc(donationId).get();
+                if (donDoc.exists) {
+                  donData = donDoc.data()!;
+                  _donationCache[donationId] = donData;
+                }
+              } catch (_) {}
+            }
+
+            if (donData != null) {
+              final donStatus = (donData['status'] ?? '').toString();
+              final normDonStatus = donStatus.toLowerCase().trim();
+
+              if (normDonStatus == 'volunteer assigned' ||
+                  normDonStatus == 'volunteer_assigned' ||
+                  normDonStatus == 'picked up' ||
+                  normDonStatus == 'picked_up' ||
+                  normDonStatus == 'on delivery' ||
+                  normDonStatus == 'on_delivery' ||
+                  normDonStatus == 'in transit') {
+                status = 'On Delivery';
+              } else if (normDonStatus == 'delivered' || normDonStatus == 'completed') {
+                status = 'Available';
+              }
+
+              if (pickup.isEmpty) {
+                pickup = donData['pickupAddress'] ?? donData['address'] ?? donData['location'] ?? '';
+              }
+              if (destination.isEmpty) {
+                destination = donData['ngoAddress'] ?? donData['destinationAddress'] ?? '';
+              }
+              if (item.isEmpty) {
+                item = donData['foodTitle'] ?? donData['foodName'] ?? donData['foodType'] ?? donData['item'] ?? '';
+              }
+            }
+          }
+
+          // Location resolution logic:
+          // - If ON DELIVERY: 1 icon at latest delivery pickup location (or workingArea if pickup empty)
+          // - If AVAILABLE: 1 icon at original location (workingArea from NGO volunteer module)
+          final bool hasLocationData = (lat != null && lng != null && lat != 0.0 && lng != 0.0) || workingArea.isNotEmpty || pickup.isNotEmpty;
+          if (!hasLocationData && status != 'On Delivery') {
+            status = 'Offline';
+          }
+
+          final resolveTarget = (status == 'On Delivery' && pickup.isNotEmpty)
+              ? pickup
+              : (workingArea.isNotEmpty ? workingArea : pickup);
+
+          final pos = await _resolve(resolveTarget, 'vol_$personKey', lat: lat, lng: lng);
+
+          final newPoint = _VolunteerPoint(
+            id: 'vol_${doc.id}',
+            name: name,
+            phone: phone,
+            workingArea: workingArea.isNotEmpty ? workingArea : 'Not specified',
+            deliveryStatus: status,
+            pickupAddress: pickup.isNotEmpty ? pickup : 'Not available',
+            destinationAddress: destination.isNotEmpty ? destination : 'Not available',
+            donationItem: item.isNotEmpty ? item : 'Not specified',
+            position: pos,
+          );
+
+          // 1 Icon per person deduplication:
+          // If person not in map, add. If present, prefer On Delivery active status over Available/Offline.
+          if (!volMap.containsKey(personKey)) {
+            volMap[personKey] = newPoint;
+          } else {
+            final existing = volMap[personKey]!;
+            if (existing.deliveryStatus != 'On Delivery' && newPoint.deliveryStatus == 'On Delivery') {
+              volMap[personKey] = newPoint; // Latest active delivery takes precedence
+            }
+          }
+        } // end for doc in volSnap.docs
+      } // end for ngoId in approvedNgoIds
+
+      _volunteers.addAll(volMap.values);
+
+      debugPrint('[AdminMap] DEDUPED: ${_ngos.length} NGOs, ${_volunteers.length} volunteers (${_volunteers.where((v) => v.deliveryStatus == "On Delivery").length} on delivery, ${_volunteers.where((v) => v.deliveryStatus == "Available").length} available)');
+
     } catch (e) {
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -276,18 +478,28 @@ class _AdminMapScreenState extends State<AdminMapScreen>
 
     if (mounted) {
       setState(() => _isLoading = false);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _fitAll());
+      // Only auto-fit the map on the very first load; stream refreshes should not move the camera
+      if (!_initialLoadDone) {
+        _initialLoadDone = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _fitAll());
+      }
     }
   }
 
   // ─── Filtered lists ─────────────────────────────────────────────
   List<_NgoPoint> get _filteredNgos {
+    if (_activeChipFilter == AdminMapChipFilter.volunteers ||
+        _activeChipFilter == AdminMapChipFilter.onDelivery ||
+        _activeChipFilter == AdminMapChipFilter.available) {
+      return [];
+    }
     if (!_filterNgos) return [];
     final q = _searchQuery.trim().toLowerCase();
     return _ngos.where((n) {
       if (q.isNotEmpty &&
           !n.name.toLowerCase().contains(q) &&
-          !n.address.toLowerCase().contains(q)) {
+          !n.address.toLowerCase().contains(q) &&
+          !n.phone.toLowerCase().contains(q)) {
         return false;
       }
       return true;
@@ -295,15 +507,23 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   }
 
   List<_VolunteerPoint> get _filteredVols {
+    if (_activeChipFilter == AdminMapChipFilter.ngos) return [];
     if (!_filterVolunteers) return [];
     final q = _searchQuery.trim().toLowerCase();
     return _volunteers.where((v) {
+      final st = v.deliveryStatus.toLowerCase();
+      if (_activeChipFilter == AdminMapChipFilter.onDelivery && st != 'on delivery') return false;
+      if (_activeChipFilter == AdminMapChipFilter.available && st != 'available') return false;
+
       if (q.isNotEmpty &&
           !v.name.toLowerCase().contains(q) &&
-          !v.workingArea.toLowerCase().contains(q)) {
+          !v.phone.toLowerCase().contains(q) &&
+          !v.workingArea.toLowerCase().contains(q) &&
+          !v.donationItem.toLowerCase().contains(q) &&
+          !v.pickupAddress.toLowerCase().contains(q) &&
+          !v.destinationAddress.toLowerCase().contains(q)) {
         return false;
       }
-      final st = v.deliveryStatus.toLowerCase();
       if (st == 'on delivery' && !_filterOnDelivery) return false;
       if (st == 'available' && !_filterAvailable) return false;
       if (st != 'on delivery' && st != 'available' && !_filterOffline) return false;
@@ -311,21 +531,75 @@ class _AdminMapScreenState extends State<AdminMapScreen>
     }).toList();
   }
 
+  Future<void> _executeSearch() async {
+    final query = _searchController.text.trim();
+    setState(() {
+      _searchQuery = query;
+    });
+
+    if (query.isEmpty) {
+      _fitAll();
+      return;
+    }
+
+    final matchedNgos = _filteredNgos;
+    final matchedVols = _filteredVols;
+
+    if (matchedNgos.isNotEmpty || matchedVols.isNotEmpty) {
+      _fitAll();
+    } else {
+      // If query does not match any existing NGO/Volunteer text string, geocode location
+      try {
+        final pos = await _resolve(query, 'search_$query');
+        if (mounted) {
+          _mapController.move(pos, 14.0);
+        }
+      } catch (_) {}
+    }
+  }
+
   void _selectNgo(_NgoPoint n) {
     setState(() {
       _selectedVolunteer = null;
       _selectedNgo = n;
+      _activePolyline = [];
     });
     _mapController.move(n.position, 14.0);
   }
 
-  void _selectVolunteer(_VolunteerPoint v) {
+  Future<void> _selectVolunteer(_VolunteerPoint v) async {
     setState(() {
       _selectedNgo = null;
       _selectedVolunteer = v;
+      _activePolyline = [];
     });
     _mapController.move(v.position, 14.0);
+
+    if (v.deliveryStatus == 'On Delivery') {
+      setState(() => _isFetchingRoute = true);
+      try {
+        final pickupPos = await _resolve(v.pickupAddress, '${v.id}_pickup');
+        final destPos = await _resolve(v.destinationAddress, '${v.id}_dest');
+
+        final points = await RoutingService.fetchRoute(from: pickupPos, to: destPos);
+        if (mounted && _selectedVolunteer?.id == v.id) {
+          setState(() {
+            _activePolyline = points;
+          });
+          if (points.isNotEmpty) {
+            _mapController.fitCamera(
+              CameraFit.bounds(
+                bounds: LatLngBounds.fromPoints(points),
+                padding: const EdgeInsets.all(70),
+              ),
+            );
+          }
+        }
+      } catch (_) {}
+      if (mounted) setState(() => _isFetchingRoute = false);
+    }
   }
+
 
   void _fitAll() {
     final all = [
@@ -359,19 +633,14 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final int ngoCount = _ngos.length;
-    final int volCount = _volunteers.length;
-    final int activeDel = _volunteers.where((v) => v.deliveryStatus == 'On Delivery').length;
-    final int availCount = _volunteers.where((v) => v.deliveryStatus == 'Available').length;
-
     return Scaffold(
       backgroundColor: colors.background,
-      body: _buildMapStack(colors, ngoCount, volCount, activeDel, availCount),
+      body: _buildMapStack(colors),
     );
   }
 
   // ─── Main map stack ─────────────────────────────────────────────
-  Widget _buildMapStack(AppColorSet colors, int ngoCount, int volCount, int activeDel, int availCount) {
+  Widget _buildMapStack(AppColorSet colors) {
     final ngoMarkers = _filteredNgos.map((n) => Marker(
       point: n.position,
       width: 44,
@@ -386,10 +655,32 @@ class _AdminMapScreenState extends State<AdminMapScreen>
       ),
     )).toList();
 
+    final Map<String, int> volPosCounts = {};
+    for (final v in _filteredVols) {
+      final key = '${v.position.latitude.toStringAsFixed(4)},${v.position.longitude.toStringAsFixed(4)}';
+      volPosCounts[key] = (volPosCounts[key] ?? 0) + 1;
+    }
+
+    final Map<String, int> volPosIndex = {};
     final volMarkers = _filteredVols.map((v) {
+      final key = '${v.position.latitude.toStringAsFixed(4)},${v.position.longitude.toStringAsFixed(4)}';
+      final count = volPosCounts[key] ?? 1;
+      final idx = volPosIndex[key] ?? 0;
+      volPosIndex[key] = idx + 1;
+
+      LatLng finalPos = v.position;
+      if (count > 1) {
+        final angle = (2 * math.pi * idx) / count;
+        final radius = 0.0035; // ~350m offset ring
+        finalPos = LatLng(
+          v.position.latitude + radius * math.cos(angle),
+          v.position.longitude + radius * math.sin(angle),
+        );
+      }
+
       final isOnDel = v.deliveryStatus == 'On Delivery';
       return Marker(
-        point: v.position,
+        point: finalPos,
         width: 44,
         height: 44,
         child: GestureDetector(
@@ -431,7 +722,19 @@ class _AdminMapScreenState extends State<AdminMapScreen>
               userAgentPackageName: 'com.sahyog.app',
               retinaMode: MediaQuery.devicePixelRatioOf(context) > 1.0,
             ),
+            if (_activePolyline.isNotEmpty)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: _activePolyline,
+                    color: AppColors.primary,
+                    strokeWidth: 4.5,
+                  ),
+                ],
+              ),
             MarkerLayer(markers: [...ngoMarkers, ...volMarkers]),
+            if (_activePolyline.isNotEmpty)
+              AnimatedDriverMarker(polyline: _activePolyline),
           ],
         ),
 
@@ -446,13 +749,69 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Row(
                   children: [
-                    _StatChip(label: 'NGOs', value: '$ngoCount', icon: Icons.shield_rounded, color: Colors.orange, colors: colors),
+                    _StatChip(
+                      label: 'NGOs',
+                      icon: Icons.shield_rounded,
+                      color: Colors.orange,
+                      colors: colors,
+                      isSelected: _activeChipFilter == AdminMapChipFilter.ngos,
+                      onTap: () {
+                        setState(() {
+                          _activeChipFilter = _activeChipFilter == AdminMapChipFilter.ngos
+                              ? AdminMapChipFilter.all
+                              : AdminMapChipFilter.ngos;
+                        });
+                        _fitAll();
+                      },
+                    ),
                     const SizedBox(width: 8),
-                    _StatChip(label: 'Volunteers', value: '$volCount', icon: Icons.people_rounded, color: Colors.green, colors: colors),
+                    _StatChip(
+                      label: 'Volunteers',
+                      icon: Icons.people_rounded,
+                      color: Colors.green,
+                      colors: colors,
+                      isSelected: _activeChipFilter == AdminMapChipFilter.volunteers,
+                      onTap: () {
+                        setState(() {
+                          _activeChipFilter = _activeChipFilter == AdminMapChipFilter.volunteers
+                              ? AdminMapChipFilter.all
+                              : AdminMapChipFilter.volunteers;
+                        });
+                        _fitAll();
+                      },
+                    ),
                     const SizedBox(width: 8),
-                    _StatChip(label: 'On Delivery', value: '$activeDel', icon: Icons.local_shipping_rounded, color: Colors.blue, colors: colors),
+                    _StatChip(
+                      label: 'On Delivery',
+                      icon: Icons.local_shipping_rounded,
+                      color: Colors.blue,
+                      colors: colors,
+                      isSelected: _activeChipFilter == AdminMapChipFilter.onDelivery,
+                      onTap: () {
+                        setState(() {
+                          _activeChipFilter = _activeChipFilter == AdminMapChipFilter.onDelivery
+                              ? AdminMapChipFilter.all
+                              : AdminMapChipFilter.onDelivery;
+                        });
+                        _fitAll();
+                      },
+                    ),
                     const SizedBox(width: 8),
-                    _StatChip(label: 'Available', value: '$availCount', icon: Icons.check_circle_rounded, color: Colors.teal, colors: colors),
+                    _StatChip(
+                      label: 'Available',
+                      icon: Icons.check_circle_rounded,
+                      color: Colors.teal,
+                      colors: colors,
+                      isSelected: _activeChipFilter == AdminMapChipFilter.available,
+                      onTap: () {
+                        setState(() {
+                          _activeChipFilter = _activeChipFilter == AdminMapChipFilter.available
+                              ? AdminMapChipFilter.all
+                              : AdminMapChipFilter.available;
+                        });
+                        _fitAll();
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -473,18 +832,32 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                         ),
                         child: TextField(
                           controller: _searchController,
-                          onChanged: (val) => setState(() => _searchQuery = val),
+                          textInputAction: TextInputAction.search,
+                          onSubmitted: (_) => _executeSearch(),
+                          onChanged: (val) {
+                            setState(() => _searchQuery = val);
+                            if (val.isEmpty) {
+                              _fitAll();
+                            } else {
+                              _fitAll();
+                            }
+                          },
                           style: GoogleFonts.inter(fontSize: 14, color: colors.textPrimary),
                           decoration: InputDecoration(
                             hintText: 'Search NGOs, volunteers, areas…',
                             hintStyle: GoogleFonts.inter(fontSize: 13, color: colors.textHint),
-                            prefixIcon: Icon(Icons.search, color: colors.textSecondary, size: 20),
+                            prefixIcon: IconButton(
+                              icon: const Icon(Icons.search, color: AppColors.primary, size: 22),
+                              onPressed: _executeSearch,
+                              tooltip: 'Search',
+                            ),
                             suffixIcon: _searchQuery.isNotEmpty
                                 ? IconButton(
                                     icon: Icon(Icons.close, size: 18, color: colors.textSecondary),
                                     onPressed: () {
                                       _searchController.clear();
                                       setState(() => _searchQuery = '');
+                                      _fitAll();
                                     },
                                   )
                                 : null,
@@ -649,7 +1022,7 @@ class _AdminMapScreenState extends State<AdminMapScreen>
         ),
 
         // ── Loading Overlay ──
-        if (_isLoading)
+        if (_isLoading || _isFetchingRoute)
           Container(
             color: Colors.black.withValues(alpha: 0.20),
             child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
@@ -661,6 +1034,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
   // ─── Volunteer Detail Card ──────────────────────────────────────
   Widget _buildVolunteerCard(_VolunteerPoint v, AppColorSet colors) {
     final bool isOnDel = v.deliveryStatus == 'On Delivery';
+    final bool hasPickupOrDrop = (v.pickupAddress.isNotEmpty && v.pickupAddress != 'Not available') ||
+        (v.destinationAddress.isNotEmpty && v.destinationAddress != 'Not available');
+
     return Card(
       elevation: 14,
       color: colors.surface,
@@ -732,7 +1108,7 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                 ),
               ],
             ),
-            if (isOnDel) ...[
+            if (isOnDel || hasPickupOrDrop) ...[
               const SizedBox(height: 14),
               Row(children: [
                 Expanded(child: _RouteEndpoint(label: 'PICKUP', address: v.pickupAddress, isStart: true, colors: colors)),
@@ -740,9 +1116,9 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Icon(Icons.arrow_forward_rounded, size: 18, color: colors.textSecondary),
                 ),
-                Expanded(child: _RouteEndpoint(label: 'DESTINATION', address: v.destinationAddress, isStart: false, colors: colors)),
+                Expanded(child: _RouteEndpoint(label: 'DROP / DESTINATION', address: v.destinationAddress, isStart: false, colors: colors)),
               ]),
-              if (v.donationItem != 'Not specified') ...[
+              if (v.donationItem != 'Not specified' && v.donationItem.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -755,26 +1131,6 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                 ),
               ],
             ],
-            const SizedBox(height: 16),
-            Row(children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 13)),
-                  onPressed: () => _callSnack(v.name, v.phone),
-                  icon: const Icon(Icons.phone, size: 16),
-                  label: Text('Call', style: GoogleFonts.publicSans(fontWeight: FontWeight.bold)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(foregroundColor: colors.textPrimary, side: BorderSide(color: colors.outlineVariant), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 13)),
-                  onPressed: () => _mapController.move(v.position, 15.0),
-                  icon: const Icon(Icons.route_rounded, size: 16),
-                  label: Text('Focus', style: GoogleFonts.publicSans(fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ]),
           ],
         ),
       ),
@@ -858,35 +1214,20 @@ class _AdminMapScreenState extends State<AdminMapScreen>
                 Expanded(child: Text(n.address, style: GoogleFonts.inter(fontSize: 12, color: colors.textSecondary))),
               ],
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            if (n.phone.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.phone_outlined, size: 14, color: colors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(n.phone, style: GoogleFonts.inter(fontSize: 12, color: colors.textSecondary)),
+                ],
               ),
-              onPressed: () => _callSnack(n.name, n.phone),
-              icon: const Icon(Icons.phone, size: 16),
-              label: Text('Contact NGO', style: GoogleFonts.publicSans(fontWeight: FontWeight.bold)),
-            ),
+            ],
           ],
         ),
       ),
     );
-  }
-
-  void _callSnack(String name, String phone) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [
-        const Icon(Icons.phone_in_talk, color: Colors.white),
-        const SizedBox(width: 12),
-        Text('Calling $name${phone.isNotEmpty ? " ($phone)" : ""}…'),
-      ]),
-      backgroundColor: AppColors.primary,
-      duration: const Duration(seconds: 2),
-    ));
   }
 }
 
@@ -1008,37 +1349,67 @@ class _MapBtn extends StatelessWidget {
 // ─── Stat chip (mobile floating) ─────────────────────────────────
 class _StatChip extends StatelessWidget {
   final String label;
-  final String value;
   final IconData icon;
   final Color color;
   final AppColorSet colors;
-  const _StatChip({required this.label, required this.value, required this.icon, required this.color, required this.colors});
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  const _StatChip({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.colors,
+    this.isSelected = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)), child: Icon(icon, size: 13, color: color)),
-          const SizedBox(width: 7),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(value, style: GoogleFonts.publicSans(fontSize: 13, fontWeight: FontWeight.w800, color: colors.textPrimary, height: 1.1)),
-              Text(label, style: GoogleFonts.inter(fontSize: 9, color: colors.textSecondary, height: 1.1)),
-            ],
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color : colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : colors.outlineVariant.withValues(alpha: 0.6),
+            width: isSelected ? 2.0 : 1.0,
           ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: isSelected ? color.withValues(alpha: 0.35) : Colors.black.withValues(alpha: 0.07),
+              blurRadius: isSelected ? 10 : 8,
+              offset: const Offset(0, 2),
+            )
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white.withValues(alpha: 0.25) : color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(icon, size: 14, color: isSelected ? Colors.white : color),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isSelected ? Colors.white : colors.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
+

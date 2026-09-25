@@ -16,7 +16,9 @@ import 'donation_detail_screen.dart';
 import '../legal/tax_receipts_screen.dart';
 
 class DonationHistoryScreen extends StatefulWidget {
-  const DonationHistoryScreen({super.key});
+  final Function(int)? onTabChange;
+
+  const DonationHistoryScreen({super.key, this.onTabChange});
 
   @override
   State<DonationHistoryScreen> createState() => _DonationHistoryScreenState();
@@ -893,17 +895,21 @@ class _DonationHistoryScreenState extends State<DonationHistoryScreen> {
                     children: [
                       const DonorNotificationBell(size: 24),
                       const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Colors.white.withValues(alpha: 0.25),
-                          backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
-                          child: profileUrl.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => widget.onTabChange?.call(4),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Colors.white.withValues(alpha: 0.25),
+                            backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
+                            child: profileUrl.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+                          ),
                         ),
                       ),
                     ],

@@ -337,14 +337,25 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
                 height: 52,
                 child: OutlinedButton.icon(
                   onPressed: _confirmLogout,
-                  icon: Icon(Icons.logout, color: c.error),
+                  icon: const Icon(
+                    Icons.logout_rounded,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                   label: Text(
-                    'Log Out',
-                    style: GoogleFonts.publicSans(fontSize: 15, fontWeight: FontWeight.w700, color: c.error),
+                    'LOG OUT',
+                    style: GoogleFonts.publicSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: c.error),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    side: const BorderSide(color: AppColors.primary, width: 1.5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.05),
                   ),
                 ),
               ),

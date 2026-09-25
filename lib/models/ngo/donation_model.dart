@@ -29,25 +29,37 @@ class DonationModel {
   final DateTime? deliveredAt;
   final String? deliveryLocation;
   final String? foodDelivered;
+  final double? latitude;
+  final double? longitude;
+  final double? driverLatitude;
+  final double? driverLongitude;
+
+  String get pickupAddress => pickupLocation;
 
   DonationModel({
-    required this.id,
+    String id = '',
     required this.donorId,
     required this.donorName,
     this.donorPhone = '',
-    required this.foodTitle,
+    String foodTitle = '',
+    String? foodName,
     required this.foodType,
-    required this.quantity,
-    required this.servesCount,
-    required this.pickupLocation,
+    String quantity = '',
+    String? foodQuantity,
+    int servesCount = 0,
+    int? servings,
+    String pickupLocation = '',
+    String? pickupAddress,
     this.distance = '',
     this.pickupTime,
     this.expiryTime,
     this.urgency = 'Medium',
     this.notes = '',
-    this.images = const [],
+    List<String> images = const [],
+    String? imageUrl,
     this.status = 'Available',
-    this.requestedNgoId,
+    String? requestedNgoId,
+    String? ngoId,
     this.acceptedByNgoId,
     this.acceptedByNgoName,
     this.acceptedAt,
@@ -59,7 +71,17 @@ class DonationModel {
     this.deliveredAt,
     this.deliveryLocation,
     this.foodDelivered,
-  });
+    this.latitude,
+    this.longitude,
+    this.driverLatitude,
+    this.driverLongitude,
+  })  : id = id.isNotEmpty ? id : '',
+        foodTitle = (foodName != null && foodName.isNotEmpty) ? foodName : foodTitle,
+        quantity = (foodQuantity != null && foodQuantity.isNotEmpty) ? foodQuantity : quantity,
+        servesCount = servings ?? servesCount,
+        pickupLocation = (pickupAddress != null && pickupAddress.isNotEmpty) ? pickupAddress : pickupLocation,
+        requestedNgoId = (ngoId != null && ngoId.isNotEmpty) ? ngoId : requestedNgoId,
+        images = (imageUrl != null && imageUrl.isNotEmpty && !images.contains(imageUrl)) ? [...images, imageUrl] : images;
 
   factory DonationModel.fromMap(Map<String, dynamic> map, String docId) {
     DateTime? parseDate(dynamic val) {
@@ -104,7 +126,7 @@ class DonationModel {
       images: imageList,
       status: map['status'] as String? ?? 'Available',
       requestedNgoId: () {
-        final raw = (map['requestedNgoId'] ?? map['ngoId'])?.toString().trim() ?? '';
+        final raw = (map['requestedNgoId'] ?? map['ngoId'] ?? map['targetNgoId'])?.toString().trim() ?? '';
         return raw.isEmpty ? null : raw;
       }(),
       acceptedByNgoId: map['acceptedByNgoId'] as String?,
@@ -120,6 +142,10 @@ class DonationModel {
       deliveredAt: parseDate(map['deliveredAt']),
       deliveryLocation: map['deliveryLocation'] as String?,
       foodDelivered: map['foodDelivered'] as String?,
+      latitude: (map['latitude'] ?? map['lat']) is num ? ((map['latitude'] ?? map['lat']) as num).toDouble() : null,
+      longitude: (map['longitude'] ?? map['lng']) is num ? ((map['longitude'] ?? map['lng']) as num).toDouble() : null,
+      driverLatitude: (map['driverLatitude'] ?? map['driverLat']) is num ? ((map['driverLatitude'] ?? map['driverLat']) as num).toDouble() : null,
+      driverLongitude: (map['driverLongitude'] ?? map['driverLng']) is num ? ((map['driverLongitude'] ?? map['driverLng']) as num).toDouble() : null,
     );
   }
 
@@ -129,10 +155,14 @@ class DonationModel {
       'donorName': donorName,
       'donorPhone': donorPhone,
       'foodTitle': foodTitle,
+      'foodName': foodTitle,
       'foodType': foodType,
       'quantity': quantity,
+      'foodQuantity': quantity,
       'servesCount': servesCount,
+      'servings': servesCount,
       'pickupLocation': pickupLocation,
+      'pickupAddress': pickupLocation,
       'distance': distance,
       'pickupTime': pickupTime?.toIso8601String(),
       'expiryTime': expiryTime?.toIso8601String(),
@@ -140,6 +170,8 @@ class DonationModel {
       'notes': notes,
       'images': images,
       'status': status,
+      'requestedNgoId': requestedNgoId,
+      'ngoId': requestedNgoId,
       'acceptedByNgoId': acceptedByNgoId,
       'acceptedByNgoName': acceptedByNgoName,
       'acceptedAt': acceptedAt?.toIso8601String(),
@@ -151,6 +183,14 @@ class DonationModel {
       'deliveredAt': deliveredAt?.toIso8601String(),
       'deliveryLocation': deliveryLocation,
       'foodDelivered': foodDelivered,
+      'latitude': latitude,
+      'longitude': longitude,
+      'lat': latitude,
+      'lng': longitude,
+      'driverLatitude': driverLatitude,
+      'driverLongitude': driverLongitude,
+      'driverLat': driverLatitude,
+      'driverLng': driverLongitude,
     };
   }
 

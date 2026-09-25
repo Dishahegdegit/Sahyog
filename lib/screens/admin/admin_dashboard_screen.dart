@@ -956,9 +956,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: colors.isDark 
-                            ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png' 
-                            : 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.sahyog.app',
                       ),
                     ],

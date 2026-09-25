@@ -21,26 +21,105 @@ class GeocodingHelper {
     return '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
   }
 
-  static Future<List<Map<String, dynamic>>> searchAddress(String query, {int limit = 5}) async {
+  static const Map<String, LatLng> _knownCityPlaces = {
+    'mumbai': LatLng(19.0760, 72.8777),
+    'bandra': LatLng(19.0596, 72.8295),
+    'andheri': LatLng(19.1136, 72.8697),
+    'colaba': LatLng(18.9067, 72.8147),
+    'dadar': LatLng(19.0178, 72.8478),
+    'powai': LatLng(19.1176, 72.9060),
+    'juhu': LatLng(19.1006, 72.8268),
+    'worli': LatLng(19.0117, 72.8180),
+    'chembur': LatLng(19.0622, 72.8974),
+    'borivali': LatLng(19.2307, 72.8567),
+    'thane': LatLng(19.2183, 72.9781),
+    'navi mumbai': LatLng(19.0330, 73.0297),
+    'pune': LatLng(18.5204, 73.8567),
+    'nagpur': LatLng(21.1458, 79.0882),
+    'wardha': LatLng(20.7453, 78.6022),
+    'samudrapur': LatLng(20.6053, 79.0394),
+    'delhi': LatLng(28.6139, 77.2090),
+    'bangalore': LatLng(12.9716, 77.5946),
+    'bengaluru': LatLng(12.9716, 77.5946),
+    'hyderabad': LatLng(17.3850, 78.4867),
+    'chennai': LatLng(13.0827, 80.2707),
+    'kolkata': LatLng(22.5726, 88.3639),
+    'ahmedabad': LatLng(23.0225, 72.5714),
+  };
+
+  static Future<List<Map<String, dynamic>>> searchAddress(String query, {int limit = 8}) async {
+    final results = <Map<String, dynamic>>[];
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) return results;
+    final encodedQuery = Uri.encodeComponent(cleanQuery);
+
+    // 1. Try Nominatim Search API (6s timeout)
     try {
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&addressdetails=1&limit=$limit',
+        'https://nominatim.openstreetmap.org/search?format=json&q=$encodedQuery&addressdetails=1&limit=$limit&countrycodes=in',
       );
-      final response = await http.get(url, headers: {'User-Agent': _userAgent});
+      final response = await http.get(url, headers: {'User-Agent': _userAgent}).timeout(const Duration(seconds: 6));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body) as List<dynamic>;
-        return data
-            .whereType<Map<String, dynamic>>()
-            .map((item) => {
-                  'display': (item['display_name'] ?? '').toString(),
-                  'lat': double.tryParse(item['lat']?.toString() ?? ''),
-                  'lng': double.tryParse(item['lon']?.toString() ?? ''),
-                })
-            .where((item) => (item['display'] as String).isNotEmpty)
-            .toList();
+        for (final item in data.whereType<Map<String, dynamic>>()) {
+          final display = (item['display_name'] ?? '').toString();
+          final lat = double.tryParse(item['lat']?.toString() ?? '');
+          final lng = double.tryParse(item['lon']?.toString() ?? '');
+          if (display.isNotEmpty && lat != null && lng != null) {
+            results.add({
+              'display': display,
+              'lat': lat,
+              'lng': lng,
+              'title': item['name']?.toString() ?? display.split(',').first,
+            });
+          }
+        }
       }
     } catch (_) {}
-    return const [];
+
+    // 2. Fallback to global search if country-restricted returned empty
+    if (results.isEmpty) {
+      try {
+        final url = Uri.parse(
+          'https://nominatim.openstreetmap.org/search?format=json&q=$encodedQuery&addressdetails=1&limit=$limit',
+        );
+        final response = await http.get(url, headers: {'User-Agent': _userAgent}).timeout(const Duration(seconds: 6));
+        if (response.statusCode == 200) {
+          final List<dynamic> data = json.decode(response.body) as List<dynamic>;
+          for (final item in data.whereType<Map<String, dynamic>>()) {
+            final display = (item['display_name'] ?? '').toString();
+            final lat = double.tryParse(item['lat']?.toString() ?? '');
+            final lng = double.tryParse(item['lon']?.toString() ?? '');
+            if (display.isNotEmpty && lat != null && lng != null) {
+              results.add({
+                'display': display,
+                'lat': lat,
+                'lng': lng,
+                'title': item['name']?.toString() ?? display.split(',').first,
+              });
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fallback to known offline locations if API failed or returned empty
+    if (results.isEmpty) {
+      final qLower = cleanQuery.toLowerCase();
+      for (final entry in _knownCityPlaces.entries) {
+        if (qLower.contains(entry.key) || entry.key.contains(qLower)) {
+          final titleStr = entry.key[0].toUpperCase() + entry.key.substring(1);
+          results.add({
+            'display': '$titleStr, India',
+            'lat': entry.value.latitude,
+            'lng': entry.value.longitude,
+            'title': titleStr,
+          });
+        }
+      }
+    }
+
+    return results;
   }
 
   static Future<MapLocationResult?> resolveAddress(String query) async {

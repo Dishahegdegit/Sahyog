@@ -8,6 +8,7 @@ import '../../constants/ngo_theme.dart';
 import '../../models/ngo/donation_model.dart';
 import '../../models/ngo/volunteer_model.dart';
 import '../../services/firestore_service.dart';
+import 'ngo_history_screen.dart';
 
 
 class NgoDashboardScreen extends StatefulWidget {
@@ -298,7 +299,7 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
                           label: 'Total\nReceived',
                           icon: Icons.inventory_2_outlined,
                           accentColor: AppColors.primary,
-                          onTap: () => widget.onTabChange(1),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NgoHistoryScreen())),
                           isOrangeCard: true,
                         ),
                       ),
@@ -310,7 +311,7 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
                           label: 'Active\nDonations',
                           icon: Icons.restaurant_menu_outlined,
                           accentColor: AppColors.primary,
-                          onTap: () => widget.onTabChange(1),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NgoHistoryScreen())),
                         ),
                       ),
                     ],
@@ -326,7 +327,7 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
                           label: 'Completed\nDeliveries',
                           icon: Icons.check_circle_outline,
                           accentColor: AppColors.primary,
-                          onTap: () {},
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NgoHistoryScreen())),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -337,7 +338,7 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
                           label: 'Food\nDistributed',
                           icon: Icons.fastfood_outlined,
                           accentColor: AppColors.primary,
-                          onTap: () {},
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NgoHistoryScreen())),
                         ),
                       ),
                     ],
@@ -485,7 +486,10 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
         SizedBox(
           height: 240,
           child: StreamBuilder<List<DonationModel>>(
-            stream: _firestoreService.streamAvailableDonations(limit: 50),
+            stream: _firestoreService.streamAvailableDonations(
+              ngoId: FirebaseAuth.instance.currentUser?.uid,
+              limit: 50,
+            ),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: AppColors.primary));
@@ -646,22 +650,37 @@ class _NgoDashboardScreenState extends State<NgoDashboardScreen> {
                                     }
                                   } catch (_) {}
 
-                                  await _firestoreService.acceptDonation(
-                                    donationId: donation.id,
-                                    ngoId: _currentNgoId,
-                                    ngoName: resolvedNgoName,
-                                  );
-
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        backgroundColor: AppColors.primary,
-                                        content: Text(
-                                          '"${donation.foodTitle}" accepted!',
-                                          style: GoogleFonts.publicSans(color: Colors.white),
-                                        ),
-                                      ),
+                                  try {
+                                    await _firestoreService.acceptDonation(
+                                      donationId: donation.id,
+                                      ngoId: _currentNgoId,
+                                      ngoName: resolvedNgoName,
                                     );
+
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          backgroundColor: const Color(0xFF1E1E1E),
+                                          content: Text(
+                                            '"${donation.foodTitle}" accepted! Redirecting to assign volunteer...',
+                                            style: GoogleFonts.publicSans(color: Colors.white),
+                                          ),
+                                        ),
+                                      );
+                                      widget.onTabChange(3);
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          backgroundColor: AppColors.error,
+                                          content: Text(
+                                            e.toString(),
+                                            style: GoogleFonts.publicSans(color: Colors.white),
+                                          ),
+                                        ),
+                                      );
+                                    }
                                   }
                                 },
                                 child: Container(

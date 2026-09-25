@@ -329,16 +329,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ],
                 ),
 
-                // Note about Admin
-                const SizedBox(height: 10),
-                Text(
-                  '* Admin accounts are created by the system',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: c.textSecondary,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
+
 
                 const SizedBox(height: 32),
 

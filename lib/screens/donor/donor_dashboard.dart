@@ -171,27 +171,23 @@ class _DonorDashboardState extends State<DonorDashboard> {
                   Tooltip(
                     message: 'Donor Profile',
                     waitDuration: const Duration(milliseconds: 300),
-                    child: Material(
-                      color: Colors.transparent,
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () => widget.onTabChange?.call(3),
-                        child: Container(
-                          width: iconSize,
-                          height: iconSize,
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: CircleAvatar(
-                            backgroundColor: Colors.white.withValues(alpha: 0.25),
-                            backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
-                            child: profileUrl.isEmpty
-                                ? const Icon(Icons.person, color: Colors.white, size: 20)
-                                : null,
-                          ),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => widget.onTabChange?.call(4),
+                      child: Container(
+                        width: iconSize,
+                        height: iconSize,
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: CircleAvatar(
+                          backgroundColor: Colors.white.withValues(alpha: 0.25),
+                          backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
+                          child: profileUrl.isEmpty
+                              ? const Icon(Icons.person, color: Colors.white, size: 20)
+                              : null,
                         ),
                       ),
                     ),
@@ -651,17 +647,21 @@ class _DonorDashboardState extends State<DonorDashboard> {
                       : ((step + 1) / DonationTracking.steps.length);
                   final statusColor = DonationTracking.statusColor(status);
                   String statusSubtext = DonationTracking.displayLabel(status);
-                  if (DonationTracking.normalize(status) == 'accepted' &&
-                      ngoName != null &&
-                      ngoName.isNotEmpty) {
+                  final normStatus = DonationTracking.normalize(status);
+                  if (normStatus == 'accepted' && ngoName != null && ngoName.isNotEmpty) {
                     statusSubtext = 'Accepted by "$ngoName"';
-                  } else if (DonationTracking.normalize(status) == 'volunteer_assigned' &&
-                      volunteerName.isNotEmpty) {
+                  } else if (normStatus == 'volunteer_assigned' && volunteerName.isNotEmpty) {
                     statusSubtext = '$volunteerName assigned for pickup';
-                  } else if (DonationTracking.normalize(status) == 'picked_up') {
+                  } else if (normStatus == 'picked_up') {
                     statusSubtext = volunteerName.isNotEmpty
                         ? '$volunteerName picked up the donation'
                         : 'Food picked up';
+                  } else if (normStatus == 'on_delivery') {
+                    statusSubtext = volunteerName.isNotEmpty
+                        ? '$volunteerName is out on delivery'
+                        : 'Food is out on delivery';
+                  } else if (normStatus == 'delivered' || normStatus == 'completed') {
+                    statusSubtext = 'Food delivered & completed!';
                   }
 
                   return Container(

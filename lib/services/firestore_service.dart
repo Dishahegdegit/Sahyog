@@ -10,7 +10,7 @@ class FirestoreService {
   // ─── DONATION STREAMS & ACTIONS ──────────────────────────────────────────
 
   /// Stream all available food donations for NGOs to discover
-  Stream<List<DonationModel>> streamAvailableDonations({int limit = 20}) {
+  Stream<List<DonationModel>> streamAvailableDonations({String? ngoId, int limit = 20}) {
     return _db
         .collection('donations')
         .limit(limit)
@@ -20,7 +20,24 @@ class FirestoreService {
           .map((doc) => DonationModel.fromMap(doc.data(), doc.id))
           .where((item) {
             final status = item.status.toLowerCase();
-            return status == 'available' || status == 'pending';
+            final isAvailableStatus = status == 'available' ||
+                status == 'pending' ||
+                status == 'submitted' ||
+                status == 'request submitted' ||
+                status == 'created';
+            final isUnaccepted = item.acceptedByNgoId == null || item.acceptedByNgoId!.isEmpty;
+
+            // If a specific target NGO is set for this donation, ensure only that NGO can see it.
+            // General unassigned donations (requestedNgoId is null/empty) remain visible to all NGOs.
+            bool isForThisNgo = true;
+            if (ngoId != null && ngoId.trim().isNotEmpty) {
+              final target = item.requestedNgoId;
+              if (target != null && target.trim().isNotEmpty) {
+                isForThisNgo = target.trim() == ngoId.trim();
+              }
+            }
+
+            return isAvailableStatus && isUnaccepted && isForThisNgo;
           })
           .toList();
 
@@ -44,8 +61,10 @@ class FirestoreService {
       return snapshot.docs
           .map((doc) => DonationModel.fromMap(doc.data(), doc.id))
           .where((item) =>
-              (item.acceptedByNgoId == ngoId || item.acceptedByNgoId == null) &&
-              (item.status == 'Accepted'))
+              item.acceptedByNgoId == ngoId &&
+              item.status == 'Accepted' &&
+              (item.assignedVolunteerId == null ||
+                  item.assignedVolunteerId!.isEmpty))
           .toList();
     });
   }
@@ -56,6 +75,20 @@ class FirestoreService {
     required String ngoId,
     required String ngoName,
   }) async {
+    // Check NGO verification status
+    final userDoc = await _db.collection('users').doc(ngoId).get();
+    if (userDoc.exists) {
+      final userData = userDoc.data()!;
+      final status = (userData['status'] ?? userData['approvalStatus'] ?? '').toString().toLowerCase().trim();
+      final isVerified = userData['verified'] == true || userData['isApproved'] == true;
+      if (status == 'pending' || (status != 'approved' && status != 'verified' && !isVerified)) {
+        throw 'Your account is pending admin verification. Please wait till your account is verified by admin before accepting donations.';
+      }
+      if (status == 'rejected') {
+        throw 'Your NGO account request was rejected by admin. Please contact support.';
+      }
+    }
+
     final docRef = _db.collection('donations').doc(donationId);
     final doc = await docRef.get();
 

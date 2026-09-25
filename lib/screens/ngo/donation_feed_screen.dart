@@ -9,7 +9,8 @@ import '../../services/firestore_service.dart';
 import '../../utils/page_limits.dart';
 
 class DonationFeedScreen extends StatefulWidget {
-  const DonationFeedScreen({super.key});
+  final Function(int)? onTabChange;
+  const DonationFeedScreen({super.key, this.onTabChange});
 
   @override
   State<DonationFeedScreen> createState() => _DonationFeedScreenState();
@@ -91,7 +92,10 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
             // Donation Requests List
             Expanded(
               child: StreamBuilder<List<DonationModel>>(
-                stream: _firestoreService.streamAvailableDonations(limit: _pageLimit),
+                stream: _firestoreService.streamAvailableDonations(
+                  ngoId: FirebaseAuth.instance.currentUser?.uid,
+                  limit: _pageLimit,
+                ),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
@@ -112,8 +116,8 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                   final ngoId = FirebaseAuth.instance.currentUser?.uid ?? '';
                   final forThisNgo = allDonations.where((item) {
                     final requested = item.requestedNgoId;
-                    if (requested == null || requested.isEmpty) return true;
-                    return requested == ngoId;
+                    if (requested == null || requested.trim().isEmpty) return true;
+                    return requested.trim() == ngoId.trim();
                   }).toList();
                   final filtered = _filterDonations(forThisNgo);
 
@@ -858,31 +862,51 @@ class _DonationFeedScreenState extends State<DonationFeedScreen> {
                         final currentNgoId = FirebaseAuth.instance.currentUser?.uid ?? 'ngo_demo';
                         const currentNgoName = 'Sahyog Relief Foundation';
 
-                        await _firestoreService.acceptDonation(
-                          donationId: donation.id,
-                          ngoId: currentNgoId,
-                          ngoName: currentNgoName,
-                        );
-
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: t.secondary,
-                              content: Row(
-                                children: [
-                                  const Icon(Icons.check_circle, color: Colors.white),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Donation Accepted! Added to Volunteer Assignment tab.',
-                                      style: GoogleFonts.publicSans(color: Colors.white),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                        try {
+                          await _firestoreService.acceptDonation(
+                            donationId: donation.id,
+                            ngoId: currentNgoId,
+                            ngoName: currentNgoName,
                           );
+
+                          final onTabChange = widget.onTabChange;
+                          final parentContext = this.context;
+
+                          // Close detail modal sheet
+                          Navigator.pop(context);
+
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF1E1E1E),
+                                content: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: Colors.white),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Donation Accepted! Redirecting to assign volunteer...',
+                                        style: GoogleFonts.publicSans(color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            onTabChange?.call(3);
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: AppColors.error,
+                                content: Text(
+                                  e.toString(),
+                                  style: GoogleFonts.publicSans(color: Colors.white),
+                                ),
+                              ),
+                            );
+                          }
                         }
                       },
                       icon: const Icon(Icons.handshake_outlined, size: 22),

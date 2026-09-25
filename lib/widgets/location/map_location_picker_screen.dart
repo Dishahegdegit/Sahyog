@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:geolocator/geolocator.dart';
 import '../../constants/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../services/geocoding_helper.dart';
@@ -55,8 +56,8 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
     );
     _zoom = widget.initialLatitude != null ? 15 : 5;
     _address = widget.initialAddress?.trim() ?? '';
-    if (_address.isEmpty) {
-      _scheduleResolve(_selected, updateSearchField: true);
+    if (_address.isNotEmpty && widget.initialLatitude != null && widget.initialLongitude != null) {
+      _scheduleResolve(_selected, updateSearchField: false);
     }
   }
 
@@ -121,18 +122,18 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
     final trimmed = value.trim();
-    if (trimmed.length < 3) {
+    if (trimmed.length < 2) {
       setState(() => _suggestions = []);
       return;
     }
-    _searchDebounce = Timer(const Duration(milliseconds: 550), () {
-      _runSearch(trimmed, autoSelectTop: true);
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      _runSearch(trimmed, autoSelectTop: false);
     });
   }
 
   Future<void> _runSearch(String query, {required bool autoSelectTop}) async {
     setState(() => _searching = true);
-    final results = await GeocodingHelper.searchAddress(query, limit: 6);
+    final results = await GeocodingHelper.searchAddress(query, limit: 8);
     if (!mounted) return;
 
     setState(() {
@@ -238,7 +239,7 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       subdomains: const ['a', 'b', 'c', 'd'],
                       userAgentPackageName: 'com.example.sahyog',
                     ),
@@ -339,6 +340,32 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
                   bottom: 16,
                   child: Column(
                     children: [
+                      _ZoomButton(
+                        icon: Icons.my_location,
+                        onTap: () async {
+                          try {
+                            final pos = await Geolocator.getCurrentPosition(
+                              locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+                            );
+                            _movePinTo(
+                              LatLng(pos.latitude, pos.longitude),
+                              zoom: 15,
+                              updateSearchField: true,
+                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Centered on current GPS location.'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          } catch (_) {
+                            _movePinTo(_indiaCenter, zoom: 6, updateSearchField: false);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
                       _ZoomButton(icon: Icons.add, onTap: () => _zoomBy(1)),
                       const SizedBox(height: 8),
                       _ZoomButton(icon: Icons.remove, onTap: () => _zoomBy(-1)),
@@ -383,7 +410,7 @@ class _MapLocationPickerScreenState extends State<MapLocationPickerScreen> {
                     )
                   else
                     Text(
-                      _address.isEmpty ? 'No address yet' : _address,
+                      _address.isEmpty ? 'Tap map or search to select location' : _address,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,

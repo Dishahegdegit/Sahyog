@@ -19,6 +19,7 @@ import '../legal/privacy_screen.dart';
 import '../legal/tax_receipts_screen.dart';
 import '../legal/impact_screen.dart';
 import '../legal/support_screen.dart';
+import '../../widgets/location/location_map_section.dart';
 
 class DonorProfileScreen extends StatefulWidget {
   const DonorProfileScreen({super.key});
@@ -37,6 +38,8 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
   final _orgController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
+  double? _selectedLat;
+  double? _selectedLng;
 
   bool _isEditing = false;
   bool _isLoading = false;
@@ -176,27 +179,41 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
 
   Future<void> _confirmLogout(BuildContext context) async {
     final c = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final navBg = isDark ? AppColors.darkSurfaceContainerLow : AppColors.surfaceContainerLow;
+    final navBorder = isDark ? AppColors.darkSurfaceContainerHighest : AppColors.surfaceContainerHighest;
+
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        backgroundColor: c.surface,
+        backgroundColor: navBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: navBorder, width: 1),
+        ),
         title: Text(
           'Confirm Logout',
           style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'Are you sure you want to log out of your Sahyog Donor Account?',
-          style: TextStyle(color: c.textSecondary),
+          'Are you sure you want to log out?',
+          style: TextStyle(color: c.textSecondary, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx, false),
-            child: Text('Cancel', style: TextStyle(color: c.textSecondary)),
+            child: Text('Cancel', style: TextStyle(color: c.textSecondary, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(72, 40),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
             onPressed: () => Navigator.pop(dialogCtx, true),
-            child: const Text('Logout'),
+            child: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -384,21 +401,32 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                     const SizedBox(height: 20),
 
                     _buildAppearanceCard(),
-                    const SizedBox(height: 20),
-
-                    _buildSavedLocationsCard(),
                     const SizedBox(height: 24),
 
                     SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: 52,
                       child: OutlinedButton.icon(
                         onPressed: () => _confirmLogout(context),
-                        icon: const Icon(Icons.logout, color: AppColors.error),
-                        label: const Text('Logout of Account', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+                        icon: const Icon(
+                          Icons.logout_rounded,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                        label: const Text(
+                          'LOG OUT',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.error),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          side: const BorderSide(color: AppColors.primary, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          backgroundColor: AppColors.primary.withValues(alpha: 0.05),
                         ),
                       ),
                     ),
@@ -602,15 +630,19 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
             ),
             const SizedBox(height: 12),
 
-            TextFormField(
-              controller: _addressController,
-              enabled: _isEditing,
-              maxLines: 2,
-              style: TextStyle(color: c.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'Default Pickup Address',
-                prefixIcon: Icon(Icons.location_on_outlined, color: AppColors.primary),
-              ),
+            LocationMapSection(
+              title: 'Default Pickup Address',
+              addressController: _addressController,
+              addressHint: 'Enter street address, area, city...',
+              latitude: _selectedLat,
+              longitude: _selectedLng,
+              onLocationChanged: (address, lat, lng) {
+                setState(() {
+                  _addressController.text = address;
+                  _selectedLat = lat;
+                  _selectedLng = lng;
+                });
+              },
             ),
             const SizedBox(height: 16),
 
@@ -737,54 +769,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildSavedLocationsCard() {
-    final c = context.colors;
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: c.outlineVariant),
-      ),
-      child: Material(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Saved Pickup Locations',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textPrimary),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add, color: AppColors.primary),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Address management feature ready!')),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              Divider(color: c.outlineVariant, height: 20),
-              ListTile(
-                leading: const Icon(Icons.home, color: AppColors.primary),
-                title: Text('Primary Address', style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary)),
-                subtitle: Text(
-                  _addressController.text.isNotEmpty ? _addressController.text : 'No address saved yet',
-                  style: TextStyle(color: c.textSecondary),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

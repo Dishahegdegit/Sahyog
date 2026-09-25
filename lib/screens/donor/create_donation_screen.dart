@@ -20,7 +20,9 @@ import '../../widgets/donor_notification_bell.dart';
 import 'food_photo_camera_screen.dart';
 
 class CreateDonationScreen extends StatefulWidget {
-  const CreateDonationScreen({super.key});
+  final Function(int)? onTabChange;
+
+  const CreateDonationScreen({super.key, this.onTabChange});
 
   @override
   State<CreateDonationScreen> createState() => _CreateDonationScreenState();
@@ -354,22 +356,36 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
   Future<void> _selectDateTime(BuildContext context, bool isPickup) async {
     final c = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final DateTime initial = DateTime.now();
+
+    // Build a picker theme that works correctly in both light and dark mode
+    ThemeData pickerTheme(BuildContext ctx) => Theme.of(ctx).copyWith(
+          colorScheme: isDark
+              ? ColorScheme.dark(
+                  primary: AppColors.primary,
+                  onPrimary: Colors.white,
+                  surface: const Color(0xFF1E1E1E),
+                  onSurface: c.textPrimary,
+                  secondary: AppColors.primary,
+                )
+              : ColorScheme.light(
+                  primary: AppColors.primary,
+                  onPrimary: Colors.white,
+                  onSurface: c.textPrimary,
+                ),
+          dialogBackgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+        );
+
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: initial,
       firstDate: initial,
       lastDate: initial.add(const Duration(days: 7)),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: ColorScheme.light(
-            primary: AppColors.primary,
-            onPrimary: Colors.white,
-            onSurface: c.textPrimary,
-          ),
-        ),
-        child: child!,
-      ),
+      builder: (ctx, child) => Theme(data: pickerTheme(ctx), child: child!),
     );
 
     if (pickedDate != null) {
@@ -377,16 +393,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       final TimeOfDay? pickedTime = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
-        builder: (context, child) => Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppColors.primary,
-              onPrimary: Colors.white,
-              onSurface: c.textPrimary,
-            ),
-          ),
-          child: child!,
-        ),
+        builder: (ctx, child) => Theme(data: pickerTheme(ctx), child: child!),
       );
 
       if (pickedTime != null) {
@@ -610,7 +617,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Your donor account is pending admin verification. You can donate after approval.'),
+          content: Text('Your account is pending admin verification. Please wait till your account is verified by admin before donating.'),
           backgroundColor: AppColors.statusPending,
         ),
       );
@@ -1118,17 +1125,21 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     children: [
                       const DonorNotificationBell(size: 24),
                       const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Colors.white.withValues(alpha: 0.25),
-                          backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
-                          child: profileUrl.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => widget.onTabChange?.call(4),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Colors.white.withValues(alpha: 0.25),
+                            backgroundImage: profileUrl.isNotEmpty ? NetworkImage(profileUrl) : null,
+                            child: profileUrl.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 18) : null,
+                          ),
                         ),
                       ),
                     ],
@@ -1433,6 +1444,83 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     ),
                   ),
                 ),
+                if (ngoQuery.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Material(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    elevation: 2,
+                    child: Container(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.5), width: 1.5),
+                      ),
+                      child: searched.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Text(
+                                'No verified NGOs match "$ngoQuery".',
+                                style: TextStyle(fontSize: 13, color: c.textSecondary, fontStyle: FontStyle.italic),
+                              ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: searched.length,
+                              separatorBuilder: (_, __) => Divider(height: 1, color: c.borderLight),
+                              itemBuilder: (context, index) {
+                                final ngo = searched[index];
+                                final km = _distanceKm(ngo);
+                                final isSelected = ngo.id == _selectedNgoId;
+
+                                return ListTile(
+                                  dense: true,
+                                  selected: isSelected,
+                                  selectedTileColor: AppColors.primary.withValues(alpha: 0.1),
+                                  leading: const Icon(Icons.verified_rounded, color: AppColors.primary, size: 20),
+                                  title: Text(
+                                    ngo.name,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: c.textPrimary,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    km != null
+                                        ? '${km.toStringAsFixed(1)} km away • ${ngo.address}'
+                                        : ngo.address,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 12, color: c.textSecondary),
+                                  ),
+                                  trailing: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isSelected ? AppColors.statusDelivered : AppColors.primary,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(64, 30),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    ),
+                                    onPressed: () {
+                                      _selectNgo(ngo);
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                    child: Text(
+                                      isSelected ? 'Selected' : 'Select',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    _selectNgo(ngo);
+                                    FocusScope.of(context).unfocus();
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
 
                 // NGO Dropdown Button with Downward Arrow

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart';
-import '../../providers/theme_provider.dart';
+
 import 'ngo_dashboard_screen.dart';
 import 'ngo_map_screen.dart';
 import 'donation_feed_screen.dart';
@@ -22,28 +22,19 @@ class NgoHome extends ConsumerStatefulWidget {
 class _NgoHomeState extends ConsumerState<NgoHome> {
   int _currentIndex = 0;
 
-  late final List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();;
-    _screens = [
-      NgoDashboardScreen(
-        onTabChange: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-      ),
-      const NgoMapScreen(),
-      const DonationFeedScreen(),
-      const VolunteerMgmtScreen(),
-      const NgoProfileScreen(),
-    ];
-  }
+  List<Widget> get _screens => [
+        NgoDashboardScreen(
+          onTabChange: (index) => setState(() => _currentIndex = index),
+        ),
+        const NgoMapScreen(),
+        DonationFeedScreen(
+          onTabChange: (index) => setState(() => _currentIndex = index),
+        ),
+        const VolunteerMgmtScreen(),
+        const NgoProfileScreen(),
+      ];
 
   Widget _buildTopOrangeHeader(BuildContext context) {
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
     final String currentNgoId =
         FirebaseAuth.instance.currentUser?.uid ?? 'ngo_demo';
     return PreferredSize(
@@ -169,23 +160,6 @@ class _NgoHomeState extends ConsumerState<NgoHome> {
                           : null,
                     ),
                   ),
-                  if (_currentIndex == 4)
-                    IconButton(
-                      icon: const Icon(Icons.menu,
-                          color: Colors.white, size: 22),
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            backgroundColor: AppColors.primary,
-                            content: Text(
-                              'NGO Menu option coming soon!',
-                              style:
-                                  GoogleFonts.publicSans(color: Colors.white),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
                   const SizedBox(width: 8),
                 ],
               );
@@ -218,32 +192,34 @@ class _NgoHomeState extends ConsumerState<NgoHome> {
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: Container(
-        height: 72,
-        decoration: BoxDecoration(
-          color: navBg,
-          border: Border(
-            top: BorderSide(color: navBorder, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: navBg,
+            border: Border(
+              top: BorderSide(color: navBorder, width: 1),
             ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home', colorScheme, isDark),
-              _buildNavItem(1, Icons.map_outlined, Icons.map, 'Map', colorScheme, isDark),
-              _buildMiddleNavItem(2, 'Requests'),
-              _buildNavItem(3, Icons.handshake_outlined, Icons.handshake, 'Community', colorScheme, isDark),
-              _buildNavItem(4, Icons.person_outline, Icons.person, 'Profile', colorScheme, isDark),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, -4),
+              ),
             ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home', colorScheme, isDark),
+                _buildNavItem(1, Icons.map_outlined, Icons.map, 'Map', colorScheme, isDark),
+                _buildMiddleNavItem(2, 'Requests'),
+                _buildNavItem(3, Icons.handshake_outlined, Icons.handshake, 'Community', colorScheme, isDark),
+                _buildNavItem(4, Icons.person_outline, Icons.person, 'Profile', colorScheme, isDark),
+              ],
+            ),
           ),
         ),
       ),

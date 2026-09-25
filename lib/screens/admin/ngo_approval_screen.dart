@@ -618,21 +618,21 @@ class _NgoCard extends StatelessWidget {
           if (statusText == 'APPROVED' || statusText == 'VERIFIED')
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onMarkPending,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colors.textSecondary,
-                      side: BorderSide(color: colors.outlineVariant),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                if (!isNgo)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onMarkPending,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.textSecondary,
+                        side: BorderSide(color: colors.outlineVariant),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: Text('Unverify',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
-                    child: Text(isNgo ? 'Mark Pending' : 'Unverify',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
-                ),
-                if (isNgo) ...[
-                  const SizedBox(width: 10),
+                if (isNgo)
                   Expanded(
                     child: ElevatedButton(
                       onPressed: onReject,
@@ -647,26 +647,27 @@ class _NgoCard extends StatelessWidget {
                           style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
                   ),
-                ],
               ],
             )
           else if (statusText == 'REJECTED')
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onMarkPending,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colors.textSecondary,
-                      side: BorderSide(color: colors.outlineVariant),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                if (!isNgo) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onMarkPending,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.textSecondary,
+                        side: BorderSide(color: colors.outlineVariant),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: Text('Mark Pending',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
-                    child: Text('Mark Pending',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
-                ),
-                const SizedBox(width: 10),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(
                   child: ElevatedButton(
                     onPressed: onApprove,
